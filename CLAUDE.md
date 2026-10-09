@@ -64,15 +64,27 @@ cargo clippy --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
 
 ## CI / releases
 
-- `.github/workflows/ci.yml` — fmt, clippy, tests on Ubuntu, macOS, Windows.
+- `.github/workflows/ci.yml` — fmt, clippy, tests on Ubuntu, macOS, Windows;
+  shellcheck `install.sh` and parse-check `install.ps1`.
 - `.github/workflows/release.yml` — pushing a `v*` tag builds release binaries
-  (Linux x64/arm64, macOS arm64/x64, Windows x64) and attaches them to a GitHub release.
+  (Linux x64/arm64, macOS arm64/x64, Windows x64) and attaches them to a GitHub
+  release, then `verify-install` installs that release with the real install
+  scripts on Linux x64/arm64, macOS and Windows (pwsh + PowerShell 5.1).
+- Release asset names have NO version (`nvmem-<target>[.exe]`) so
+  `releases/latest/download/<asset>` links always work. `install.sh` /
+  `install.ps1` depend on these names — keep them in sync.
+- To release: bump `version` in `Cargo.toml`, commit, push, then
+  `git tag -a vX.Y.Z -m "nvmem vX.Y.Z" && git push origin vX.Y.Z`.
 - Keep tests portable: no `*` or other Windows-invalid chars in fixture file
   names; gate symlink tests with `#[cfg(unix)]`.
 
 ## Project layout
 
 - `Cargo.toml` — package manifest (Rust edition 2024)
+- `install.sh` (POSIX sh, macOS/Linux) / `install.ps1` (Windows) — one-line
+  installers served from `main` via raw.githubusercontent.com; download the
+  release asset to `~/.local/bin` / `%LOCALAPPDATA%\Programs\nvmem`.
+  Env: `NVMEM_VERSION`, `NVMEM_INSTALL_DIR`.
 - `src/main.rs` — CLI (clap derive, subcommands; bare `nvmem` = `list`), dispatch.
   `cli_definition_is_valid` test runs clap's `debug_assert` — keep it.
 - `src/compare.rs` — `diff`, `install_command`, `find`/`suggestions` (pure, no I/O)

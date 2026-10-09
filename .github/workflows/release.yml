@@ -29,7 +29,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name=nvmem-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.ext }}
+          name=nvmem-${{ matrix.target }}${{ matrix.ext }}
           cp target/${{ matrix.target }}/release/nvmem${{ matrix.ext }} "$name"
           echo "ASSET=$name" >> "$GITHUB_ENV"
       - name: Upload to release
@@ -40,3 +40,37 @@ jobs:
           gh release view ${{ github.ref_name }} >/dev/null 2>&1 \
             || gh release create ${{ github.ref_name }} --generate-notes || true
           gh release upload ${{ github.ref_name }} "$ASSET" --clobber
+
+  # Install the just-published release with the real install scripts.
+  verify-install:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      NVMEM_VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh
+        if: runner.os != 'Windows'
+        run: |
+          sh install.sh
+          "$HOME/.local/bin/nvmem" --version | grep -qx "nvmem ${GITHUB_REF_NAME#v}"
+          "$HOME/.local/bin/nvmem" --help >/dev/null
+      - name: install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./install.ps1
+          $v = nvmem --version
+          if ($v -ne "nvmem $($env:GITHUB_REF_NAME.TrimStart('v'))") { throw "unexpected version: $v" }
+          nvmem --help | Out-Null
+      - name: install.ps1 (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:NVMEM_INSTALL_DIR = "$env:RUNNER_TEMP\nvmem-ps5"
+          ./install.ps1
+          & "$env:NVMEM_INSTALL_DIR\nvmem.exe" --version

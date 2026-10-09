@@ -27,21 +27,49 @@ If nvm lives in a non-standard folder, set `NVM_DIR` (macOS / Linux) or
 
 ## Install
 
-### Prebuilt binary
+**macOS / Linux**
 
-Download the file for your system from the
-[Releases page](https://github.com/Cassio7/nvmem/releases), put it somewhere on
-your `PATH` and make it executable (`chmod +x nvmem` on macOS/Linux).
+```bash
+curl -fsSL https://raw.githubusercontent.com/Cassio7/nvmem/main/install.sh | sh
+```
 
-| System | File |
+**Windows** (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/Cassio7/nvmem/main/install.ps1 | iex
+```
+
+Run the same command again to update. The script picks the right build for
+your system, installs it to `~/.local/bin` (Windows:
+`%LOCALAPPDATA%\Programs\nvmem`, added to your user `PATH`), and tells you if
+that folder still needs to be added to your `PATH`.
+
+| Variable | Effect |
 |---|---|
-| macOS (Apple Silicon) | `nvmem-<version>-aarch64-apple-darwin` |
-| macOS (Intel) | `nvmem-<version>-x86_64-apple-darwin` |
-| Linux x64 | `nvmem-<version>-x86_64-unknown-linux-gnu` |
-| Linux ARM64 | `nvmem-<version>-aarch64-unknown-linux-gnu` |
-| Windows x64 | `nvmem-<version>-x86_64-pc-windows-msvc.exe` |
+| `NVMEM_VERSION` | Install a specific release, e.g. `v0.1.2` (default: latest) |
+| `NVMEM_INSTALL_DIR` | Install somewhere else |
 
-The binaries are not signed, so the first run may be blocked:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Cassio7/nvmem/main/install.sh | NVMEM_INSTALL_DIR=/usr/local/bin sh
+```
+
+To uninstall, delete the `nvmem` binary (`~/.local/bin/nvmem` by default).
+
+### Manual download
+
+| System | Download (always the latest version) |
+|---|---|
+| macOS (Apple Silicon) | [`nvmem-aarch64-apple-darwin`](https://github.com/Cassio7/nvmem/releases/latest/download/nvmem-aarch64-apple-darwin) |
+| macOS (Intel) | [`nvmem-x86_64-apple-darwin`](https://github.com/Cassio7/nvmem/releases/latest/download/nvmem-x86_64-apple-darwin) |
+| Linux x64 | [`nvmem-x86_64-unknown-linux-gnu`](https://github.com/Cassio7/nvmem/releases/latest/download/nvmem-x86_64-unknown-linux-gnu) |
+| Linux ARM64 | [`nvmem-aarch64-unknown-linux-gnu`](https://github.com/Cassio7/nvmem/releases/latest/download/nvmem-aarch64-unknown-linux-gnu) |
+| Windows x64 | [`nvmem-x86_64-pc-windows-msvc.exe`](https://github.com/Cassio7/nvmem/releases/latest/download/nvmem-x86_64-pc-windows-msvc.exe) |
+
+Rename it to `nvmem` (`nvmem.exe` on Windows), put it in a folder on your
+`PATH`, and on macOS / Linux make it executable with `chmod +x nvmem`.
+
+The binaries are not signed, so a manually downloaded file may be blocked on
+first run:
 
 - **macOS**: "cannot be opened because the developer cannot be verified" →
   run `xattr -d com.apple.quarantine nvmem`, or right-click → Open.
