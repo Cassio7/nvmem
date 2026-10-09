@@ -8,16 +8,6 @@ Install a new Node and your `tsc`, `pnpm`, `shopify`, ... are suddenly "gone".
 `nvmem` shows you what lives where, finds which version has a given tool, and
 gives you the exact command to copy your global packages to a new version.
 
-```
-$ nvmem
-v26.11.1
-  └─ typescript  7.0.2  → tsc
-
-v24.21.0 (default)
-  ├─ @shopify/cli  4.8.4  → shopify
-  └─ yoinks        0.3.1  → yoinks
-```
-
 - Works on **macOS and Linux** ([nvm](https://github.com/nvm-sh/nvm)) and
   **Windows** ([nvm-windows](https://github.com/coreybutler/nvm-windows)).
 - Read-only: it only reads nvm's folders, it never installs or changes anything.
@@ -68,38 +58,13 @@ The version nvm uses by default is marked `(default)` (on Windows, the active
 one is marked `(current)`). Next to each package, `→` lists the commands it
 adds to your terminal.
 
-```
-$ nvmem --table --all
-package       v26.11.1  v24.21.0*
-@shopify/cli  -         4.8.4
-corepack      -         0.36.0
-npm           11.20.0   11.19.0
-typescript    7.0.2     -
-yoinks        -         0.3.1
-* default
-```
-
 ### Copy global packages to another version
 
 ```bash
-nvmem diff 24 26
+nvmem diff 24 26     # what 24 has that 26 doesn't, plus the npm i -g command to install it
 ```
 
-```
-v24.21.0 (default) → v26.11.1
-
-Only in v24.21.0:
-  @shopify/cli  4.8.4
-  yoinks        0.3.1
-
-Only in v26.11.1:
-  typescript  7.0.2
-
-To install the missing packages in v26.11.1:
-  nvm exec 26.11.1 npm i -g @shopify/cli yoinks
-```
-
-Copy and run the printed command. Options:
+Options:
 
 | Option | Effect |
 |---|---|
@@ -119,13 +84,8 @@ point at a local folder; `nvmem` reminds you to re-link them.
 ### Find which versions have a package or command
 
 ```bash
-nvmem which tsc
-```
-
-```
-typescript  → tsc
-  v26.11.1  7.0.2
-  not in: v24.21.0 (default)
+nvmem which tsc           # by command name
+nvmem which typescript    # by package name
 ```
 
 Works with package names (`typescript`, `@shopify/cli`) or command names
