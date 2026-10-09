@@ -1,0 +1,42 @@
+name: Release
+
+# Push a tag like `v0.1.0` to build binaries and attach them to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, ext: "" }
+          - { os: macos-latest, target: aarch64-apple-darwin, ext: "" }
+          - { os: macos-latest, target: x86_64-apple-darwin, ext: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name=nvmem-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/nvmem${{ matrix.ext }} "$name"
+          echo "ASSET=$name" >> "$GITHUB_ENV"
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ${{ github.ref_name }} >/dev/null 2>&1 \
+            || gh release create ${{ github.ref_name }} --generate-notes || true
+          gh release upload ${{ github.ref_name }} "$ASSET" --clobber
