@@ -13,6 +13,18 @@ gives you the exact command to copy your global packages to a new version.
 - Read-only: it only reads nvm's folders, it never installs or changes anything.
 - Fast: no `nvm` or `npm` processes are spawned.
 
+## Requirements
+
+- **nvm** on macOS / Linux ([nvm-sh/nvm](https://github.com/nvm-sh/nvm)), or
+  **nvm-windows** on Windows ([coreybutler/nvm-windows](https://github.com/coreybutler/nvm-windows)).
+  Other version managers (fnm, Volta, n, asdf, mise) and Node installed without
+  a version manager are not supported.
+- Nothing else: `nvmem` is a single standalone binary, no Node, npm or Rust needed
+  to run it.
+
+If nvm lives in a non-standard folder, set `NVM_DIR` (macOS / Linux) or
+`NVM_HOME` (Windows) to it.
+
 ## Install
 
 ### Prebuilt binary

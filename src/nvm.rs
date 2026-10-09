@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// Packages that ship with Node itself rather than being installed by the user.
 pub const BUNDLED_PACKAGES: &[&str] = &["npm", "corepack"];
@@ -126,10 +126,35 @@ impl Install {
     }
 
     /// Lists installed Node versions, newest first.
+    /// Explains that nvm isn't installed (or isn't where we looked) and how to fix it.
+    fn not_found_message(&self, dir: &Path) -> String {
+        let (name, url, env) = match self.flavor {
+            Flavor::NvmSh => ("nvm", "https://github.com/nvm-sh/nvm", "NVM_DIR"),
+            Flavor::NvmWindows { .. } => (
+                "nvm-windows",
+                "https://github.com/coreybutler/nvm-windows",
+                "NVM_HOME",
+            ),
+        };
+        format!(
+            "{name} not found (looked in {}).\n\
+             nvmem lists the Node versions installed with {name}: {url}\n\
+             If {name} is installed somewhere else, set {env} to its folder.",
+            dir.display()
+        )
+    }
+
     pub fn installed_versions(&self) -> Result<Vec<NodeVersion>> {
         let dir = self.versions_dir();
-        let entries =
-            fs::read_dir(&dir).with_context(|| format!("cannot read {}", dir.display()))?;
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                bail!("{}", self.not_found_message(&dir))
+            }
+            Err(e) => {
+                return Err(e).with_context(|| format!("cannot read {}", dir.display()));
+            }
+        };
 
         let mut versions = Vec::new();
         for entry in entries {
@@ -440,6 +465,25 @@ mod tests {
         ("npm", Some("11.0.0")),
         ("yoinks", Some("1.2.3")),
     ];
+
+    #[test]
+    fn missing_nvm_gives_helpful_error() {
+        let tmp = TempDir::new().unwrap();
+        let err = Install::nvm_sh(tmp.path().join("nope"))
+            .installed_versions()
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with("nvm not found (looked in "), "{err}");
+        assert!(err.contains("https://github.com/nvm-sh/nvm"), "{err}");
+        assert!(err.contains("set NVM_DIR"), "{err}");
+
+        let err = Install::nvm_windows(&tmp.path().join("nope"), None)
+            .installed_versions()
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with("nvm-windows not found"), "{err}");
+        assert!(err.contains("set NVM_HOME"), "{err}");
+    }
 
     #[test]
     fn parses_versions() {
