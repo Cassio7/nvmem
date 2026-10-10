@@ -24,6 +24,8 @@ Run it again to update. Or grab a binary from [releases](https://github.com/Cass
 
 Set `NVMEM_VERSION` to pin a release and `NVMEM_INSTALL_DIR` to change the folder (default `~/.local/bin`, Windows `%LOCALAPPDATA%\Programs\nvmem`).
 
+The scripts check each download against the release's SHA256 checksum. Release binaries also carry a signed build provenance attestation; to check a downloaded binary yourself: `gh attestation verify <file> --repo Cassio7/nvmem`.
+
 Usage
 -----
 

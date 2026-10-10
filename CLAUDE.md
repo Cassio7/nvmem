@@ -80,6 +80,21 @@ cross-platform check.
 - Release asset names have NO version (`nvmem-<target>[.exe]`) so
   `releases/latest/download/<asset>` links always work. `install.sh` /
   `install.ps1` depend on these names — keep them in sync.
+- Each release asset gets a `<asset>.sha256` file (`<hex>  <asset>`, sha256sum
+  format) and a build provenance attestation (`actions/attest-build-provenance`;
+  check with `gh attestation verify <file> --repo Cassio7/nvmem`).
+- `install.sh` / `install.ps1` verify the binary against `<asset>.sha256`:
+  a mismatch is an error (nothing installed); a missing checksum (404, releases
+  up to v0.1.3) or no hashing tool is only a warning.
+- Actions are pinned to full commit SHAs with a version comment
+  (`uses: actions/checkout@<sha> # v7.0.1`); Dependabot's github-actions updates
+  bump them. `dtolnay/rust-toolchain` pins the `stable` branch head, so it needs
+  `toolchain: stable` in `with:`.
+- Token permissions are least-privilege: workflows default to
+  `contents: read`; only the release `build` job gets `contents: write`,
+  `id-token: write` and `attestations: write`.
+- In `run:` blocks, never interpolate `${{ ... }}`; pass values through `env:`
+  and use `"$VAR"` (expressions are fine in `runs-on`, `with:`, `if:`, `env:`).
 - To release: bump `version` in `Cargo.toml`, commit (`chore: release vX.Y.Z`),
   push, then create an annotated tag whose message is the release notes
   (markdown bullets) and push it:
