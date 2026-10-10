@@ -53,8 +53,6 @@ that folder still needs to be added to your `PATH`.
 curl -fsSL https://raw.githubusercontent.com/Cassio7/nvmem/main/install.sh | NVMEM_INSTALL_DIR=/usr/local/bin sh
 ```
 
-To uninstall, delete the `nvmem` binary (`~/.local/bin/nvmem` by default).
-
 ### Manual download
 
 | System | Download (always the latest version) |
@@ -82,6 +80,35 @@ If you have [Rust](https://rustup.rs) installed:
 ```bash
 cargo install --git https://github.com/Cassio7/nvmem
 ```
+
+## Uninstall
+
+`nvmem` is a single file and writes no config, cache or logs, so removing the
+binary removes everything.
+
+**macOS / Linux** (installed with the script)
+
+```bash
+rm ~/.local/bin/nvmem
+```
+
+**Windows** (installed with the script; also removes it from your user `PATH`)
+
+```powershell
+$dir = "$env:LOCALAPPDATA\Programs\nvmem"
+Remove-Item -Recurse -Force $dir
+$path = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dir }
+[Environment]::SetEnvironmentVariable('Path', ($path -join ';'), 'User')
+```
+
+**Cargo**
+
+```bash
+cargo uninstall nvmem
+```
+
+**Manual download** or a custom `NVMEM_INSTALL_DIR`: delete the `nvmem` file
+(`nvmem.exe` on Windows) from the folder you put it in.
 
 ## Usage
 
