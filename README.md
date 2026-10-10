@@ -5,13 +5,16 @@
 
 Every Node version managed by nvm has its own separate set of global packages.
 Install a new Node and your `tsc`, `pnpm`, `shopify`, ... are suddenly "gone".
-`nvmem` shows you what lives where, finds which version has a given tool, and
-gives you the exact command to copy your global packages to a new version.
+`nvmem` shows you what lives where, which packages have updates or are
+deprecated, finds which version has a given tool, and gives you the exact
+command to copy your global packages to a new version.
 
 - Works on **macOS and Linux** ([nvm](https://github.com/nvm-sh/nvm)) and
   **Windows** ([nvm-windows](https://github.com/coreybutler/nvm-windows)).
-- Read-only: it only reads nvm's folders, it never installs or changes anything.
-- Fast: no `nvm` or `npm` processes are spawned.
+- Read-only: it reads nvm's folders and asks the npm registry about updates;
+  it never installs or changes anything.
+- Fast: no `nvm` or `npm` processes are spawned, and registry answers are
+  cached, so most runs are instant.
 
 ## Requirements
 
@@ -83,8 +86,14 @@ cargo install --git https://github.com/Cassio7/nvmem
 
 ## Uninstall
 
-`nvmem` is a single file and writes no config, cache or logs, so removing the
-binary removes everything.
+`nvmem` is a single file plus a small cache of npm registry answers. Remove
+the binary, and optionally the cache:
+
+| System | Cache |
+|---|---|
+| macOS | `~/Library/Caches/nvmem` |
+| Linux | `~/.cache/nvmem` (or `$XDG_CACHE_HOME/nvmem`) |
+| Windows | `%LOCALAPPDATA%\nvmem` |
 
 **macOS / Linux** (installed with the script)
 
@@ -119,11 +128,31 @@ nvmem                # every version, as a tree
 nvmem 24             # only versions matching 24 (also: 22.9, v24.21.0, default, node, lts/*)
 nvmem --table        # one row per package, one column per version
 nvmem --all          # also show packages bundled with Node (npm, corepack)
+nvmem --offline      # skip the npm registry check
+nvmem --refresh      # ignore cached registry answers and check again now
 ```
 
 The version nvm uses by default is marked `(default)` (on Windows, the active
-one is marked `(current)`). Next to each package, `→` lists the commands it
-adds to your terminal.
+one is marked `(current)`). Next to each package:
+
+| Marker | Meaning |
+|---|---|
+| `↑ 4.9.3` | A newer version is on npm (`↑` in `--table`) |
+| `deprecated` | The installed version is deprecated, with npm's message below it (`!` in `--table`) |
+| `(linked)` | Installed with `npm link` |
+| `→ tsc` | Commands the package adds to your terminal |
+
+When updates are available, `nvmem` ends with the command to update each Node
+version (`nvm exec <version> npm i -g <package>@latest`).
+
+#### Update checks
+
+- Registry answers are cached for 6 hours, so most runs make no network
+  requests. The first run (or after `--refresh`) takes well under a second.
+- Offline or registry unreachable: the last cached answers are used, otherwise
+  the list is shown without update info.
+- Uses the public npm registry, or `npm_config_registry` if set. Packages the
+  registry doesn't know (private ones) are skipped.
 
 ### Copy global packages to another version
 

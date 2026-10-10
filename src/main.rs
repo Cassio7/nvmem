@@ -1,6 +1,7 @@
 mod compare;
 mod nvm;
 mod output;
+mod registry;
 
 use anyhow::{Result, bail};
 use clap::{Args, ColorChoice, Parser, Subcommand};
@@ -62,6 +63,14 @@ struct ListArgs {
     /// Show a package × version matrix instead of a tree.
     #[arg(short, long)]
     table: bool,
+
+    /// Don't check the npm registry for updates and deprecations.
+    #[arg(long, conflicts_with = "refresh")]
+    offline: bool,
+
+    /// Ignore cached registry answers and check again now.
+    #[arg(long)]
+    refresh: bool,
 }
 
 fn main() -> Result<()> {
@@ -98,13 +107,49 @@ fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
         entries = selected.into_iter().map(|i| entries[i].clone()).collect();
     }
 
+    let incomplete = !args.offline && check_registry(&mut entries, args.refresh);
+
     let rendered = if args.table {
         output::table(&entries)
     } else {
         output::tree(&entries)
     };
     anstream::print!("{rendered}");
+    anstream::print!(
+        "{}",
+        output::registry_summary(&entries, &install.flavor, incomplete)
+    );
     Ok(())
+}
+
+/// Fills in update / deprecation info from the npm registry. Returns true when
+/// the registry couldn't be reached for some packages.
+fn check_registry(entries: &mut [nvm::Entry], refresh: bool) -> bool {
+    // Linked packages are local checkouts, not registry releases.
+    let packages: Vec<(String, String)> = entries
+        .iter()
+        .flat_map(|e| &e.packages)
+        .filter(|p| !p.linked)
+        .filter_map(|p| Some((p.name.clone(), p.version.clone()?)))
+        .collect();
+    if packages.is_empty() {
+        return false;
+    }
+    let lookup = registry::lookup(
+        &packages,
+        registry::default_cache_path().as_deref(),
+        registry::CACHE_TTL,
+        refresh,
+        registry::http_fetcher(),
+    );
+    for pkg in entries.iter_mut().flat_map(|e| &mut e.packages) {
+        if let Some(version) = &pkg.version
+            && let Some(info) = lookup.info.get(&(pkg.name.clone(), version.clone()))
+        {
+            pkg.registry = info.clone();
+        }
+    }
+    lookup.incomplete
 }
 
 fn diff(

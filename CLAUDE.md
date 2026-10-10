@@ -10,9 +10,11 @@ it lists every installed Node.js version and the global packages
 
 Commands:
 
-- `nvmem [VERSION] [--table]` (same as `nvmem list`): versions + global packages as a
-  tree (with each package's commands from `bin`, and `(linked)` for `npm link`),
-  or a package × version matrix. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
+- `nvmem [VERSION] [--table] [--offline] [--refresh]` (same as `nvmem list`):
+  versions + global packages as a tree (with each package's commands from `bin`,
+  `(linked)` for `npm link`, `↑ x.y.z` when npm has a newer version, `deprecated`
+  + message), or a package × version matrix (`↑` / `!` markers). Ends with a
+  summary + `npm i -g <pkg>@latest` commands per version. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
   `default`/`current`, `node`, or an nvm-sh alias like `lts/*`.
 - `nvmem diff FROM TO [--exact] [--command-only]`: packages only in FROM / only in
   TO / at different versions, plus the command to install FROM's missing packages
@@ -26,13 +28,18 @@ Commands:
 ## v1 scope (agreed)
 
 - Plain, non-interactive CLI: print and exit.
-- Read-only: list installed Node versions and, under each, its global packages
+- Read-only on disk (only writes the registry cache): list installed Node versions and, under each, its global packages
   with their versions (tree-style output). Mark the nvm-sh `default` alias,
   or the active version on nvm-windows (`current`).
 - Hide Node-bundled packages (`npm`, `corepack`) by default; `--all` shows them.
 - Colors via `anstream`/`anstyle`: auto-disabled when piped, respects `NO_COLOR`.
-- Candidate next features: `outdated` (needs network), disk sizes, `--json`,
-  shell completions.
+- Registry checks (`src/registry.rs`): per package, GET `<registry>/<name>/latest`
+  and `<registry>/<name>/<installed>` (~5 KB each, scoped names as `@scope%2Fname`),
+  in parallel (≤16 threads, 3 s timeout) via `ureq`. Cached 6 h in
+  `registry.json` under the OS cache dir; 404s are cached too; on network
+  failure stale cache entries are used. Registry = `$npm_config_registry` or
+  npmjs. Never block or fail the listing because of the registry.
+- Candidate next features: Homebrew tap, disk sizes, `--json`, shell completions.
 
 ## Build & run
 
@@ -54,13 +61,9 @@ cargo clippy -- -D warnings # lint, treat warnings as errors
 cargo test                  # tests
 ```
 
-Cross-platform check from macOS (type-checks only, can't run the binaries):
-
-```bash
-rustup target add x86_64-pc-windows-msvc x86_64-unknown-linux-gnu
-cargo clippy --all-targets --target x86_64-pc-windows-msvc -- -D warnings
-cargo clippy --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
-```
+Cross-compiling from macOS no longer works (`ureq` → rustls → `ring` has C
+code needing a target C toolchain); CI's native Linux/macOS/Windows jobs are the
+cross-platform check.
 
 ## CI / releases
 
@@ -87,7 +90,10 @@ cargo clippy --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
   Env: `NVMEM_VERSION`, `NVMEM_INSTALL_DIR`.
 - `src/main.rs` — CLI (clap derive, subcommands; bare `nvmem` = `list`), dispatch.
   `cli_definition_is_valid` test runs clap's `debug_assert` — keep it.
-- `src/compare.rs` — `diff`, `install_command`, `find`/`suggestions` (pure, no I/O)
+- `src/compare.rs` — `diff`, `install_command` / `npm_install_command`,
+  `find`/`suggestions` (pure, no I/O)
+- `src/registry.rs` — npm registry lookups + cache; `lookup` takes the fetch
+  function as a parameter so tests use a fake registry (no network in tests)
 - `src/output.rs` — tree, table, diff and which renderers; return styled `String`s
   (tests strip ANSI with `anstream::adapter::strip_str`)
 - `src/nvm.rs` — `Install` (nvm-sh or nvm-windows layout, chosen by `cfg!(windows)`):

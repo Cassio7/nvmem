@@ -6,8 +6,8 @@ use std::fmt::Write;
 
 use anstyle::{AnsiColor, Style};
 
-use crate::compare::{Diff, Found};
-use crate::nvm::{Entry, GlobalPackage};
+use crate::compare::{Diff, Found, npm_install_command};
+use crate::nvm::{Entry, Flavor, GlobalPackage};
 
 const HEADER: Style = Style::new().bold();
 const MARK: Style = AnsiColor::Green.on_default().bold();
@@ -33,6 +33,51 @@ fn version_cell(version: Option<&str>) -> (Style, &str) {
     }
 }
 
+/// Cells laid out in aligned columns separated by two spaces. Columns whose
+/// width is 0 are skipped; trailing empty cells produce no padding.
+fn columns(cells: &[(Style, String)], widths: &[usize]) -> String {
+    let last = cells.iter().rposition(|(_, text)| !text.is_empty());
+    let mut parts = Vec::new();
+    for (i, ((style, text), &width)) in cells.iter().zip(widths).enumerate() {
+        if width == 0 || last.is_none_or(|last| i > last) {
+            continue;
+        }
+        parts.push(if Some(i) == last {
+            styled(*style, text)
+        } else {
+            padded(*style, text, width)
+        });
+    }
+    parts.join("  ")
+}
+
+/// The per-package cells of a tree line:
+/// name, version, update, deprecated, linked, commands.
+fn package_cells(pkg: &GlobalPackage) -> Vec<(Style, String)> {
+    let (version_style, version) = version_cell(pkg.version.as_deref());
+    let text = |cond: bool, s: String| if cond { s } else { String::new() };
+    vec![
+        (Style::new(), pkg.name.clone()),
+        (version_style, version.to_string()),
+        (
+            WARN,
+            pkg.registry
+                .update
+                .as_ref()
+                .map_or_else(String::new, |v| format!("↑ {v}")),
+        ),
+        (
+            MISSING,
+            text(pkg.registry.deprecated.is_some(), "deprecated".into()),
+        ),
+        (WARN, text(pkg.linked, "(linked)".into())),
+        (
+            DIM,
+            text(!pkg.bins.is_empty(), format!("→ {}", pkg.bins.join(", "))),
+        ),
+    ]
+}
+
 /// Each version followed by a tree of its packages.
 pub fn tree(entries: &[Entry]) -> String {
     let mut out = String::new();
@@ -40,10 +85,7 @@ pub fn tree(entries: &[Entry]) -> String {
         if i > 0 {
             out.push('\n');
         }
-        out += &styled(HEADER, &entry.version.name);
-        if let Some(label) = entry.label {
-            out += &format!(" {}", styled(MARK, &format!("({label})")));
-        }
+        out += &version_heading(entry);
         out.push('\n');
 
         let packages = &entry.packages;
@@ -57,38 +99,23 @@ pub fn tree(entries: &[Entry]) -> String {
             continue;
         }
 
-        let name_width = packages.iter().map(|p| p.name.chars().count()).max();
-        let version_width = packages
-            .iter()
-            .map(|p| version_cell(p.version.as_deref()).1.chars().count())
-            .max();
-        for (j, pkg) in packages.iter().enumerate() {
-            let branch = if j + 1 == packages.len() {
-                "└─"
-            } else {
-                "├─"
-            };
-            let (style, version) = version_cell(pkg.version.as_deref());
-            let has_extra = !pkg.bins.is_empty() || pkg.linked;
-
-            let _ = write!(
-                out,
-                "  {} {}  ",
-                styled(DIM, branch),
-                padded(Style::new(), &pkg.name, name_width.unwrap_or(0))
-            );
-            if has_extra {
-                out += &padded(style, version, version_width.unwrap_or(0));
-            } else {
-                out += &styled(style, version);
+        let rows: Vec<Vec<(Style, String)>> = packages.iter().map(package_cells).collect();
+        let widths: Vec<usize> = (0..rows[0].len())
+            .map(|col| {
+                rows.iter()
+                    .map(|r| r[col].1.chars().count())
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect();
+        for (j, (pkg, row)) in packages.iter().zip(&rows).enumerate() {
+            let last = j + 1 == packages.len();
+            let branch = if last { "└─" } else { "├─" };
+            let _ = writeln!(out, "  {} {}", styled(DIM, branch), columns(row, &widths));
+            if let Some(message) = &pkg.registry.deprecated {
+                let stem = if last { " " } else { "│" };
+                let _ = writeln!(out, "  {}    {}", styled(DIM, stem), styled(DIM, message));
             }
-            if !pkg.bins.is_empty() {
-                out += &format!("  {}", styled(DIM, &format!("→ {}", pkg.bins.join(", "))));
-            }
-            if pkg.linked {
-                out += &format!("  {}", styled(WARN, "(linked)"));
-            }
-            out.push('\n');
         }
     }
     out
@@ -113,11 +140,21 @@ pub fn table(entries: &[Entry]) -> String {
         })
         .collect();
 
+    // Version, then `↑` for an available update and `!` for deprecated.
     let cell = |entry: &Entry, name: &str| -> (Style, String) {
         match entry.packages.iter().find(|p| p.name == name) {
             Some(p) => {
-                let (style, v) = version_cell(p.version.as_deref());
-                (style, v.to_string())
+                let (mut style, v) = version_cell(p.version.as_deref());
+                let mut text = v.to_string();
+                if p.registry.update.is_some() {
+                    text.push_str(" ↑");
+                    style = WARN;
+                }
+                if p.registry.deprecated.is_some() {
+                    text.push_str(" !");
+                    style = MISSING;
+                }
+                (style, text)
             }
             None => (DIM, "-".to_string()),
         }
@@ -161,8 +198,85 @@ pub fn table(entries: &[Entry]) -> String {
         out.push('\n');
     }
 
+    let packages = || entries.iter().flat_map(|e| &e.packages);
+    let mut legend = Vec::new();
     if let Some(label) = entries.iter().find_map(|e| e.label) {
-        out += &styled(DIM, &format!("* {label}\n"));
+        legend.push(format!("* {label}"));
+    }
+    if packages().any(|p| p.registry.update.is_some()) {
+        legend.push("↑ update available".to_string());
+    }
+    if packages().any(|p| p.registry.deprecated.is_some()) {
+        legend.push("! deprecated".to_string());
+    }
+    if !legend.is_empty() {
+        out += &styled(DIM, &format!("{}\n", legend.join("   ")));
+    }
+    out
+}
+
+/// Totals of available updates and deprecated packages, with the commands
+/// to update each Node version. Empty when everything is up to date.
+pub fn registry_summary(entries: &[Entry], flavor: &Flavor, incomplete: bool) -> String {
+    let mut out = String::new();
+    let updates: usize = entries
+        .iter()
+        .flat_map(|e| &e.packages)
+        .filter(|p| p.registry.update.is_some())
+        .count();
+    let deprecated: Vec<String> = entries
+        .iter()
+        .flat_map(|e| {
+            e.packages
+                .iter()
+                .filter(|p| p.registry.deprecated.is_some())
+                .map(move |p| format!("{} in {}", p.name, e.version.name))
+        })
+        .collect();
+
+    let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
+    if updates > 0 {
+        let _ = writeln!(
+            out,
+            "\n{} available. To update:",
+            styled(WARN, &format!("↑ {}", plural(updates, "update")))
+        );
+        for entry in entries {
+            let specs: Vec<String> = entry
+                .packages
+                .iter()
+                .filter(|p| p.registry.update.is_some() && !p.linked)
+                .map(|p| format!("{}@latest", p.name))
+                .collect();
+            if specs.is_empty() {
+                continue;
+            }
+            for line in npm_install_command(flavor, &entry.version, &specs).lines() {
+                let _ = writeln!(out, "  {}", styled(MARK, line));
+            }
+        }
+    }
+    if !deprecated.is_empty() {
+        let _ = writeln!(
+            out,
+            "{}{}: {}",
+            if updates > 0 { "" } else { "\n" },
+            styled(
+                MISSING,
+                &format!("! {} deprecated", plural(deprecated.len(), "package"))
+            ),
+            deprecated.join(", ")
+        );
+    }
+    if incomplete {
+        let _ = writeln!(
+            out,
+            "\n{}",
+            styled(
+                DIM,
+                "Couldn't reach the npm registry, some update checks were skipped."
+            )
+        );
     }
     out
 }
@@ -344,6 +458,7 @@ mod tests {
             version: version.map(str::to_string),
             linked,
             bins: bins.iter().map(|b| b.to_string()).collect(),
+            ..Default::default()
         }
     }
 
@@ -397,13 +512,65 @@ v26.1.0
   └─ typescript  5.9.2  → tsc, tsserver
 
 v24.2.0 (default)
-  ├─ @shopify/cli  3.80.0  → shopify
+  ├─ @shopify/cli  3.80.0            → shopify
   ├─ mytool        ?       (linked)
   └─ yoinks        0.3.1
 
 v18.0.0
   └─ (no global packages)
 "
+        );
+    }
+
+    /// `sample()` with registry info: an update for @shopify/cli in v24 and a
+    /// deprecated yoinks.
+    fn sample_with_registry() -> Vec<Entry> {
+        let mut entries = sample();
+        entries[1].packages[0].registry.update = Some("4.9.3".into());
+        entries[1].packages[2].registry.deprecated = Some("use something else".into());
+        entries
+    }
+
+    #[test]
+    fn renders_tree_with_registry_info() {
+        let entries = sample_with_registry();
+        assert_eq!(
+            plain(&tree(&entries[1..2])),
+            "\
+v24.2.0 (default)
+  ├─ @shopify/cli  3.80.0  ↑ 4.9.3                        → shopify
+  ├─ mytool        ?                            (linked)
+  └─ yoinks        0.3.1            deprecated
+       use something else
+"
+        );
+    }
+
+    #[test]
+    fn renders_table_with_registry_info() {
+        let out = plain(&table(&sample_with_registry()));
+        assert!(out.contains("@shopify/cli  -        3.80.0 ↑"), "{out}");
+        assert!(out.contains("yoinks        -        0.3.1 !"), "{out}");
+        assert!(
+            out.ends_with("* default   ↑ update available   ! deprecated\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn renders_registry_summary() {
+        let entries = sample_with_registry();
+        assert_eq!(
+            plain(&registry_summary(&entries, &Flavor::NvmSh, false)),
+            "\n↑ 1 update available. To update:\n  \
+             nvm exec 24.2.0 npm i -g @shopify/cli@latest\n\
+             ! 1 package deprecated: yoinks in v24.2.0\n"
+        );
+        // Up to date: nothing printed.
+        assert_eq!(registry_summary(&sample(), &Flavor::NvmSh, false), "");
+        assert!(
+            plain(&registry_summary(&sample(), &Flavor::NvmSh, true))
+                .contains("Couldn't reach the npm registry")
         );
     }
 

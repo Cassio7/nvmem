@@ -22,7 +22,7 @@ pub struct NodeVersion {
 }
 
 /// A package found in a version's global `node_modules`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GlobalPackage {
     /// Full name, including the scope for scoped packages (`@scope/name`).
     pub name: String,
@@ -32,6 +32,8 @@ pub struct GlobalPackage {
     pub linked: bool,
     /// Commands the package puts on `PATH` (its `bin` field), sorted.
     pub bins: Vec<String>,
+    /// Update / deprecation info from the npm registry, when looked up.
+    pub registry: crate::registry::Info,
 }
 
 /// One Node version with its global packages.
@@ -370,6 +372,7 @@ fn read_package(name: String, path: &Path) -> GlobalPackage {
         version,
         linked,
         bins,
+        registry: Default::default(),
     }
 }
 

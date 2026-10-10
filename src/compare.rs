@@ -50,14 +50,19 @@ pub fn install_command(
     if specs.is_empty() {
         return None;
     }
+    Some(npm_install_command(flavor, target, &specs))
+}
+
+/// Shell command(s) running `npm i -g <specs>` in `target`.
+pub fn npm_install_command(flavor: &Flavor, target: &NodeVersion, specs: &[String]) -> String {
     let version = target.name.trim_start_matches('v');
     let packages = specs.join(" ");
-    Some(match flavor {
+    match flavor {
         // `nvm exec` runs in the target version without switching the shell.
         Flavor::NvmSh => format!("nvm exec {version} npm i -g {packages}"),
         // nvm-windows has no `exec`; two lines work in both cmd and PowerShell.
         Flavor::NvmWindows { .. } => format!("nvm use {version}\nnpm i -g {packages}"),
-    })
+    }
 }
 
 /// A package found by [`find`], with where it is and isn't installed.
@@ -139,6 +144,7 @@ mod tests {
             version: Some(version.to_string()),
             linked,
             bins: bins.iter().map(|b| b.to_string()).collect(),
+            ..Default::default()
         }
     }
 
