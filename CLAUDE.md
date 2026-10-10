@@ -76,8 +76,14 @@ cross-platform check.
 - Release asset names have NO version (`nvmem-<target>[.exe]`) so
   `releases/latest/download/<asset>` links always work. `install.sh` /
   `install.ps1` depend on these names — keep them in sync.
-- To release: bump `version` in `Cargo.toml`, commit, push, then
-  `git tag -a vX.Y.Z -m "nvmem vX.Y.Z" && git push origin vX.Y.Z`.
+- To release: bump `version` in `Cargo.toml`, commit (`chore: release vX.Y.Z`),
+  push, then create an annotated tag whose message is the release notes
+  (markdown bullets) and push it:
+  `git tag -a vX.Y.Z --cleanup=verbatim -F notes.md && git push origin vX.Y.Z`.
+  The release workflow uses the tag message as the GitHub release description
+  (`--cleanup=verbatim` keeps lines starting with `#`).
+- Commit messages follow Conventional Commits: `feat:`, `fix:`, `docs:`,
+  `build:`, `ci:`, `chore:`, `refactor:`, `test:`; one logical change per commit.
 - Keep tests portable: no `*` or other Windows-invalid chars in fixture file
   names; gate symlink tests with `#[cfg(unix)]`.
 
