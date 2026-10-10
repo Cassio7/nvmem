@@ -1,0 +1,25 @@
+# Weekly pull requests that keep dependencies up to date. CI runs on each one.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope # -> "build(deps): bump ..."
+    # One PR for all compatible (minor/patch) updates; majors get their own.
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope # -> "ci(deps): bump ..."
+    groups:
+      github-actions:
+        patterns: ["*"]
