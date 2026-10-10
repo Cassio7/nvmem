@@ -142,7 +142,9 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
 - `src/sanitize.rs` — guards for external text (folder names, `package.json`,
   registry): `is_safe_package_name` / `is_safe_version` gate everything that
   goes into generated shell commands or registry URLs (invalid ones are left
-  out and reported, never quoted/escaped).
+  out and reported, never quoted/escaped). `printable` strips control
+  characters and bidi overrides; `output::styled`/`padded` apply it to all
+  printed text — never write external text to the output without them.
 - `src/registry.rs` — npm registry lookups + cache; `lookup` takes the fetch
   function as a parameter so tests use a fake registry (no network in tests)
 - `src/output.rs` — tree, table, diff and which renderers; return styled `String`s

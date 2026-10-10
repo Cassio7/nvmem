@@ -186,7 +186,11 @@ fn which(install: &nvm::Install, name: &str) -> Result<()> {
     let entries = install.load_entries(true)?;
     let found = compare::find(&entries, name);
     if found.is_empty() {
-        let hints = compare::suggestions(&entries, name);
+        let name = sanitize::printable(name);
+        let hints: Vec<_> = compare::suggestions(&entries, &name)
+            .into_iter()
+            .map(sanitize::printable)
+            .collect();
         if hints.is_empty() {
             bail!("no package or command named '{name}' in any Node version");
         }

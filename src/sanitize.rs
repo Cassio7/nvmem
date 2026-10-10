@@ -1,5 +1,25 @@
 //! Guards for text that comes from outside nvmem (folder names, `package.json`
-//! files, the npm registry) before it is used in shell commands or URLs.
+//! files, the npm registry) before it is printed or used in shell commands
+//! or URLs.
+
+use std::borrow::Cow;
+
+/// `text` without characters that can control a terminal or disguise text:
+/// C0/C1 control characters (escape sequences start with ESC or CSI, so this
+/// also neutralizes color codes, cursor movement, title changes and OSC 52
+/// clipboard writes) and Unicode bidirectional overrides ("Trojan Source").
+/// Tabs and newlines are dropped too: every caller prints single-line values.
+pub fn printable(text: &str) -> Cow<'_, str> {
+    let unsafe_char = |c: char| {
+        c.is_control()
+            || matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+    };
+    if text.contains(unsafe_char) {
+        Cow::Owned(text.chars().filter(|&c| !unsafe_char(c)).collect())
+    } else {
+        Cow::Borrowed(text)
+    }
+}
 
 /// Whether `name` is an npm package name (`name` or `@scope/name`) made only of
 /// characters that are safe unquoted in sh, cmd and PowerShell: each part uses
@@ -48,6 +68,24 @@ pub fn is_safe_version(version: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn printable_strips_terminal_control_sequences() {
+        assert_eq!(printable("typescript 5.0.4"), "typescript 5.0.4");
+        assert!(matches!(printable("plain"), Cow::Borrowed(_)));
+        // Title change, line erase + carriage return, color, OSC 52 clipboard write.
+        assert_eq!(
+            printable("1.0.0\u{1b}]0;TITLE\u{7}\u{1b}[2K\rFAKE"),
+            "1.0.0]0;TITLE[2KFAKE"
+        );
+        assert_eq!(printable("\u{1b}[31mred\u{1b}[0m"), "[31mred[0m");
+        assert_eq!(printable("x\u{1b}]52;c;ZXZpbA==\u{7}"), "x]52;c;ZXZpbA==");
+        // C1 CSI, DEL, tab/newline, bidi override.
+        assert_eq!(printable("a\u{9b}2Jb\u{7f}c\td\ne"), "a2Jbcde");
+        assert_eq!(printable("safe\u{202E}txt.exe"), "safetxt.exe");
+        // Ordinary Unicode is kept.
+        assert_eq!(printable("café → ✓ 名前"), "café → ✓ 名前");
+    }
 
     #[test]
     fn accepts_real_package_names() {

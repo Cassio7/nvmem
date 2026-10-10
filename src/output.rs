@@ -8,6 +8,7 @@ use anstyle::{AnsiColor, Style};
 
 use crate::compare::{Diff, Found, is_installable, npm_install_command};
 use crate::nvm::{Entry, Flavor, GlobalPackage};
+use crate::sanitize::printable;
 
 const HEADER: Style = Style::new().bold();
 const MARK: Style = AnsiColor::Green.on_default().bold();
@@ -17,13 +18,18 @@ const WARN: Style = AnsiColor::Yellow.on_default();
 const MISSING: Style = AnsiColor::Red.on_default();
 
 /// `text` styled and left-aligned in `width` columns (padding stays unstyled).
+/// Like [`styled`], strips terminal control characters from `text`.
 fn padded(style: Style, text: &str, width: usize) -> String {
+    let text = printable(text);
     let pad = width.saturating_sub(text.chars().count());
     format!("{style}{text}{style:#}{:pad$}", "")
 }
 
+/// `text` wrapped in `style`. All text in the output goes through here or
+/// [`padded`], so control characters from package.json files or the registry
+/// (which could rewrite the terminal) are always stripped.
 fn styled(style: Style, text: &str) -> String {
-    format!("{style}{text}{style:#}")
+    format!("{style}{}{style:#}", printable(text))
 }
 
 fn version_cell(version: Option<&str>) -> (Style, &str) {
@@ -128,7 +134,7 @@ pub fn table(entries: &[Entry]) -> String {
         .flat_map(|e| e.packages.iter().map(|p| p.name.as_str()))
         .collect();
     if names.is_empty() {
-        return styled(DIM, "(no global packages)\n");
+        return styled(DIM, "(no global packages)") + "\n";
     }
 
     // Plain-text header labels; the marked version gets a `*`.
@@ -210,7 +216,8 @@ pub fn table(entries: &[Entry]) -> String {
         legend.push("! deprecated".to_string());
     }
     if !legend.is_empty() {
-        out += &styled(DIM, &format!("{}\n", legend.join("   ")));
+        out += &styled(DIM, &legend.join("   "));
+        out.push('\n');
     }
     out
 }
@@ -265,7 +272,7 @@ pub fn registry_summary(entries: &[Entry], flavor: &Flavor, incomplete: bool) ->
                 MISSING,
                 &format!("! {} deprecated", plural(deprecated.len(), "package"))
             ),
-            deprecated.join(", ")
+            styled(Style::new(), &deprecated.join(", "))
         );
     }
     if incomplete {

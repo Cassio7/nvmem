@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
+use crate::sanitize::printable;
+
 /// Packages that ship with Node itself rather than being installed by the user.
 pub const BUNDLED_PACKAGES: &[&str] = &["npm", "corepack"];
 
@@ -361,7 +363,8 @@ fn read_package(name: String, path: &Path) -> GlobalPackage {
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
     let version = json
         .as_ref()
-        .and_then(|j| j.get("version")?.as_str().map(str::to_string));
+        .and_then(|j| j.get("version")?.as_str())
+        .map(|v| printable(v).into_owned());
     let bins = json
         .as_ref()
         .and_then(|j| j.get("bin"))
@@ -382,9 +385,9 @@ fn bin_names(package: &str, bin: &serde_json::Value) -> Vec<String> {
     let mut names: Vec<String> = match bin {
         serde_json::Value::String(_) => {
             let unscoped = package.rsplit('/').next().unwrap_or(package);
-            vec![unscoped.to_string()]
+            vec![printable(unscoped).into_owned()]
         }
-        serde_json::Value::Object(map) => map.keys().cloned().collect(),
+        serde_json::Value::Object(map) => map.keys().map(|k| printable(k).into_owned()).collect(),
         _ => Vec::new(),
     };
     names.sort();

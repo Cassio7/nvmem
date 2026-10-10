@@ -253,8 +253,8 @@ fn parse_manifest(body: &str) -> Option<Manifest> {
     let text = |key: &str| {
         json.get(key)
             .and_then(|v| v.as_str())
+            .map(|s| crate::sanitize::printable(s).into_owned())
             .filter(|s| !s.is_empty())
-            .map(str::to_string)
     };
     Some(Manifest {
         version: text("version"),
