@@ -82,10 +82,47 @@ cross-platform check.
   `git tag -a vX.Y.Z --cleanup=verbatim -F notes.md && git push origin vX.Y.Z`.
   The release workflow uses the tag message as the GitHub release description
   (`--cleanup=verbatim` keeps lines starting with `#`).
-- Commit messages follow Conventional Commits: `feat:`, `fix:`, `docs:`,
-  `build:`, `ci:`, `chore:`, `refactor:`, `test:`; one logical change per commit.
+- `.github/workflows/audit.yml` — `cargo audit` (RustSec advisories) weekly
+  (Mondays), on dependency changes, and on demand.
 - Keep tests portable: no `*` or other Windows-invalid chars in fixture file
   names; gate symlink tests with `#[cfg(unix)]`.
+
+## Commit messages
+
+[Conventional Commits](https://www.conventionalcommits.org): `<type>: <summary>`
+(imperative, lowercase, no trailing period), optional body explaining why.
+One logical change per commit; split mixed work into separate commits.
+
+| Type | Use for |
+|---|---|
+| `feat:` | New user-facing behavior (commands, flags, output) |
+| `fix:` | Bug fixes |
+| `docs:` | README, CLAUDE.md, comments only |
+| `refactor:` | Code changes with no behavior change |
+| `test:` | Adding or fixing tests only |
+| `build:` | `Cargo.toml`, dependencies, release profile |
+| `ci:` | `.github/` workflows, Dependabot config |
+| `chore:` | Version bumps (`chore: release vX.Y.Z`), housekeeping |
+
+Breaking changes: `feat!:` / `fix!:` plus a `BREAKING CHANGE:` line in the body.
+
+## Dependencies
+
+Direct crates (see `Cargo.toml`): `clap` (CLI), `anstream`/`anstyle` (colors),
+`anyhow` (errors), `serde`/`serde_json` (JSON), `ureq` (HTTPS to the npm
+registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
+
+- `cargo update` — newest semver-compatible versions (only touches `Cargo.lock`).
+- Major bumps (`4.x` → `5.0`): edit `Cargo.toml`, fix code, run quality checks.
+- `cargo audit` (install: `cargo install cargo-audit`) — RustSec advisories;
+  `cargo outdated --root-deps-only` (install: `cargo install cargo-outdated`).
+- Dependabot (`.github/dependabot.yml`, free on GitHub): weekly PRs, Cargo
+  minor/patch grouped into one PR (`build(deps): ...`), GitHub Actions grouped
+  (`ci(deps): ...`). Merge once CI is green; majors need review. Dependency
+  updates don't need a release unless they fix something user-facing (e.g. a
+  security advisory in `ureq`/rustls → release a patch version).
+- Prefer few dependencies: reading files/JSON covers most needs; add a crate
+  only when it saves real complexity.
 
 ## Project layout
 
