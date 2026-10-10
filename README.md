@@ -5,7 +5,7 @@ nvmem
 
 Every Node version managed by [nvm](https://github.com/nvm-sh/nvm) (macOS, Linux) or [nvm-windows](https://github.com/coreybutler/nvm-windows) has its own global packages. Install a new Node and your `tsc`, `pnpm`, `shopify` are suddenly gone. `nvmem` lists them per version, flags updates and deprecations, and prints the command to move them over.
 
-Read-only, no `nvm` or `npm` spawned, single binary.
+Read-only, offline by default, no `nvm` or `npm` spawned, single binary.
 
 Install
 -------
@@ -32,8 +32,8 @@ nvmem                  # every version and its global packages, as a tree
 nvmem 24               # only matching versions (22.9, v24.21.0, default, node, lts/*)
 nvmem --table          # package × version matrix
 nvmem --all            # include npm and corepack
-nvmem --offline        # skip the registry check
-nvmem --refresh        # ignore cached registry answers
+nvmem -u               # also check npm for updates and deprecations
+nvmem --refresh        # same, ignoring cached registry answers
 
 nvmem diff 24 26       # what 24 has that 26 doesn't + the command to install it
 nvmem diff 24 26 --exact --command-only
@@ -42,7 +42,7 @@ eval "$(nvmem diff 24 26 --command-only)"   # run it
 nvmem which tsc        # which versions have it (package or command name)
 ```
 
-Markers: `↑ 4.9.3` newer on npm · `deprecated` · `(linked)` from `npm link` · `→ tsc` commands it adds · `(default)` / `(current)` the version nvm uses.
+Markers: `↑ 4.9.3` newer on npm (with `-u`) · `deprecated` (with `-u`) · `(linked)` from `npm link` · `→ tsc` commands it adds · `(default)` / `(current)` the version nvm uses.
 
 Colors turn off when piped or when `NO_COLOR` is set; force with `--color always|never`.
 
@@ -50,7 +50,7 @@ How it works
 ------------
 
 - reads nvm's folders directly (`$NVM_DIR` or `~/.nvm`; `%NVM_HOME%` or `%APPDATA%\nvm`)
-- asks the npm registry (or `$npm_config_registry`) for updates, in parallel, cached for 6 hours — offline just works
+- never touches the network unless you pass `-u`; then it asks the npm registry (or `$npm_config_registry`) about each package, in parallel, cached for 6 hours. That sends your global package names and versions to the registry
 - fnm, Volta, n, asdf and mise are not supported
 
 Uninstall
@@ -60,7 +60,7 @@ Uninstall
 rm ~/.local/bin/nvmem   # or: cargo uninstall nvmem
 ```
 
-Windows: delete `%LOCALAPPDATA%\Programs\nvmem` and remove it from your user `PATH`. Optional cache: `~/Library/Caches/nvmem` (macOS), `~/.cache/nvmem` (Linux), `%LOCALAPPDATA%\nvmem` (Windows).
+Windows: delete `%LOCALAPPDATA%\Programs\nvmem` and remove it from your user `PATH`. Registry cache (only created by `-u`): `~/Library/Caches/nvmem` (macOS), `~/.cache/nvmem` (Linux), `%LOCALAPPDATA%\nvmem` (Windows).
 
 Development
 -----------

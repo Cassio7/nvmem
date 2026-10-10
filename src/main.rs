@@ -65,13 +65,25 @@ struct ListArgs {
     #[arg(short, long)]
     table: bool,
 
-    /// Don't check the npm registry for updates and deprecations.
-    #[arg(long, conflicts_with = "refresh")]
-    offline: bool,
+    /// Check the npm registry for updates and deprecated packages
+    /// (sends package names and versions to the registry).
+    #[arg(short, long)]
+    updates: bool,
 
-    /// Ignore cached registry answers and check again now.
+    /// Like --updates, but ignore cached registry answers and check again now.
     #[arg(long)]
     refresh: bool,
+
+    /// No-op kept for compatibility: nvmem is offline unless --updates is given.
+    #[arg(long, hide = true)]
+    offline: bool,
+}
+
+impl ListArgs {
+    /// Whether to contact the npm registry. Offline is the default.
+    fn check_updates(&self) -> bool {
+        (self.updates || self.refresh) && !self.offline
+    }
 }
 
 fn main() -> Result<()> {
@@ -108,7 +120,7 @@ fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
         entries = selected.into_iter().map(|i| entries[i].clone()).collect();
     }
 
-    let incomplete = !args.offline && check_registry(&mut entries, args.refresh);
+    let incomplete = args.check_updates() && check_registry(&mut entries, args.refresh);
 
     let rendered = if args.table {
         output::table(&entries)
@@ -232,6 +244,39 @@ mod tests {
         assert!(cli.command.is_none());
         assert_eq!(cli.list.node_version.as_deref(), Some("24"));
         assert!(cli.list.table);
+
+        // Offline unless asked; --refresh implies --updates; --offline still parses.
+        assert!(!Cli::try_parse_from(["nvmem"]).unwrap().list.check_updates());
+        assert!(
+            Cli::try_parse_from(["nvmem", "-u"])
+                .unwrap()
+                .list
+                .check_updates()
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "24", "--updates", "--table"])
+                .unwrap()
+                .list
+                .check_updates()
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "--refresh"])
+                .unwrap()
+                .list
+                .check_updates()
+        );
+        assert!(
+            !Cli::try_parse_from(["nvmem", "-u", "--offline"])
+                .unwrap()
+                .list
+                .check_updates()
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "list", "-u"])
+                .unwrap()
+                .command
+                .is_some_and(|c| matches!(c, Command::List(args) if args.check_updates()))
+        );
 
         let cli = Cli::try_parse_from(["nvmem", "diff", "24", "26", "--all"]).unwrap();
         assert!(cli.all);

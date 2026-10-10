@@ -10,11 +10,13 @@ it lists every installed Node.js version and the global packages
 
 Commands:
 
-- `nvmem [VERSION] [-t/--table] [--offline] [--refresh]` (same as `nvmem list`):
+- `nvmem [VERSION] [-t/--table] [-u/--updates] [--refresh]` (same as `nvmem list`):
   versions + global packages as a tree (with each package's commands from `bin`,
-  `(linked)` for `npm link`, `↑ x.y.z` when npm has a newer version, `deprecated`
-  + message), or a package × version matrix (`↑` / `!` markers). Ends with a
-  summary + `npm i -g <pkg>@latest` commands per version. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
+  `(linked)` for `npm link`), or a package × version matrix. **Offline by
+  default**; with `-u` (or `--refresh` = `-u` ignoring the cache) it also shows
+  `↑ x.y.z` when npm has a newer version and `deprecated` + message (`↑` / `!`
+  in the table), ending with a summary + `npm i -g <pkg>@latest` commands per
+  version. `--offline` is a hidden no-op kept for v0.1.3 compatibility. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
   `default`/`current`, `node`, or an nvm-sh alias like `lts/*`.
 - `nvmem diff FROM TO [--exact] [--command-only]`: packages only in FROM / only in
   TO / at different versions, plus the command to install FROM's missing packages
@@ -33,7 +35,8 @@ Commands:
   or the active version on nvm-windows (`current`).
 - Hide Node-bundled packages (`npm`, `corepack`) by default; `--all` shows them.
 - Colors via `anstream`/`anstyle`: auto-disabled when piped, respects `NO_COLOR`.
-- Registry checks (`src/registry.rs`): per package, GET `<registry>/<name>/latest`
+- Registry checks (`src/registry.rs`, only with `-u`/`--refresh` — it sends
+  package names/versions to the registry, so it stays opt-in): per package, GET `<registry>/<name>/latest`
   and `<registry>/<name>/<installed>` (~5 KB each, scoped names as `@scope%2Fname`),
   in parallel (≤16 threads, 3 s timeout) via `ureq`. Cached 6 h in
   `registry.json` under the OS cache dir (`~/Library/Caches/nvmem`,
