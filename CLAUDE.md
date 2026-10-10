@@ -10,7 +10,7 @@ it lists every installed Node.js version and the global packages
 
 Commands:
 
-- `nvmem [VERSION] [--table] [--offline] [--refresh]` (same as `nvmem list`):
+- `nvmem [VERSION] [-t/--table] [--offline] [--refresh]` (same as `nvmem list`):
   versions + global packages as a tree (with each package's commands from `bin`,
   `(linked)` for `npm link`, `↑ x.y.z` when npm has a newer version, `deprecated`
   + message), or a package × version matrix (`↑` / `!` markers). Ends with a
@@ -23,7 +23,7 @@ Commands:
 - `nvmem which NAME`: versions that have a package, matched by package name or
   command name (`which tsc` → typescript). Always includes bundled packages.
   Exit code 1 with "did you mean" hints when nothing matches.
-- Global flags: `--all` (include bundled npm/corepack), `--color auto|always|never`.
+- Global flags: `-a/--all` (include bundled npm/corepack), `--color auto|always|never`.
 
 ## v1 scope (agreed)
 
@@ -36,7 +36,8 @@ Commands:
 - Registry checks (`src/registry.rs`): per package, GET `<registry>/<name>/latest`
   and `<registry>/<name>/<installed>` (~5 KB each, scoped names as `@scope%2Fname`),
   in parallel (≤16 threads, 3 s timeout) via `ureq`. Cached 6 h in
-  `registry.json` under the OS cache dir; 404s are cached too; on network
+  `registry.json` under the OS cache dir (`~/Library/Caches/nvmem`,
+  `$XDG_CACHE_HOME/nvmem` or `~/.cache/nvmem`, `%LOCALAPPDATA%\nvmem\cache`); 404s are cached too; on network
   failure stale cache entries are used. Registry = `$npm_config_registry` or
   npmjs. Never block or fail the listing because of the registry.
 - Candidate next features: Homebrew tap, disk sizes, `--json`, shell completions.
@@ -57,7 +58,7 @@ Run these before committing:
 
 ```bash
 cargo fmt                   # format
-cargo clippy -- -D warnings # lint, treat warnings as errors
+cargo clippy --all-targets -- -D warnings # lint (same as CI), warnings are errors
 cargo test                  # tests
 ```
 
@@ -67,7 +68,7 @@ cross-platform check.
 
 ## CI / releases
 
-- `.github/workflows/ci.yml` — fmt, clippy, tests on Ubuntu, macOS, Windows;
+- `.github/workflows/ci.yml` — on push to `main`/`master` and PRs: fmt, clippy, tests on Ubuntu, macOS, Windows;
   shellcheck `install.sh` and parse-check `install.ps1`.
 - `.github/workflows/release.yml` — pushing a `v*` tag builds release binaries
   (Linux x64/arm64, macOS arm64/x64, Windows x64) and attaches them to a GitHub
@@ -126,7 +127,10 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
 
 ## Project layout
 
-- `Cargo.toml` — package manifest (Rust edition 2024)
+- `Cargo.toml` / `Cargo.lock` — package manifest (Rust edition 2024) and committed lockfile
+- `README.md` — user-facing docs (keep short; details live in `--help`);
+  `LICENSE` (MIT); `.gitignore` (`/target`)
+- `.github/` — `workflows/{ci,release,audit}.yml`, `dependabot.yml` (see above)
 - `install.sh` (POSIX sh, macOS/Linux) / `install.ps1` (Windows) — one-line
   installers served from `main` via raw.githubusercontent.com; download the
   release asset to `~/.local/bin` / `%LOCALAPPDATA%\Programs\nvmem`.
