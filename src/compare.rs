@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::nvm::{Entry, Flavor, GlobalPackage, NodeVersion};
+use crate::sanitize::{is_safe_package_name, is_safe_version};
 
 /// Differences between the global packages of two versions.
 #[derive(Debug, Default)]
@@ -30,9 +31,30 @@ pub fn diff<'a>(from: &'a [GlobalPackage], to: &'a [GlobalPackage]) -> Diff<'a> 
     d
 }
 
+/// Whether `pkg` may go into a generated install command: not linked (those
+/// point at local checkouts and must be re-linked by hand), a safe package
+/// name and, when pinning versions, a safe version. Names and versions come
+/// from folder names and `package.json`, so anything else is left out rather
+/// than risk injecting shell syntax into a command the user may run.
+pub fn is_installable(pkg: &GlobalPackage, exact: bool) -> bool {
+    !pkg.linked
+        && is_safe_package_name(&pkg.name)
+        && (!exact || pkg.version.as_deref().is_none_or(is_safe_version))
+}
+
+/// Packages left out of the install command because their name or version
+/// failed validation (linked packages are reported separately).
+pub fn not_installable<'a>(missing: &[&'a GlobalPackage], exact: bool) -> Vec<&'a GlobalPackage> {
+    missing
+        .iter()
+        .filter(|p| !p.linked && !is_installable(p, exact))
+        .copied()
+        .collect()
+}
+
 /// Shell command(s) installing `missing` into `target`, or `None` when there
-/// is nothing installable. Linked packages are skipped: they point at local
-/// checkouts and must be re-linked by hand. With `exact`, versions are pinned.
+/// is nothing installable (see [`is_installable`]). With `exact`, versions
+/// are pinned.
 pub fn install_command(
     flavor: &Flavor,
     target: &NodeVersion,
@@ -41,7 +63,7 @@ pub fn install_command(
 ) -> Option<String> {
     let specs: Vec<String> = missing
         .iter()
-        .filter(|p| !p.linked)
+        .filter(|p| is_installable(p, exact))
         .map(|p| match (&p.version, exact) {
             (Some(v), true) => format!("{}@{v}", p.name),
             _ => p.name.clone(),
@@ -53,7 +75,8 @@ pub fn install_command(
     Some(npm_install_command(flavor, target, &specs))
 }
 
-/// Shell command(s) running `npm i -g <specs>` in `target`.
+/// Shell command(s) running `npm i -g <specs>` in `target`. Callers must only
+/// pass specs built from [`is_installable`] packages.
 pub fn npm_install_command(flavor: &Flavor, target: &NodeVersion, specs: &[String]) -> String {
     let version = target.name.trim_start_matches('v');
     let packages = specs.join(" ");
@@ -217,6 +240,38 @@ mod tests {
         );
         assert_eq!(
             install_command(&Flavor::NvmSh, &target, &[&linked], false),
+            None
+        );
+    }
+
+    #[test]
+    fn install_commands_never_contain_unsafe_names_or_versions() {
+        let good = pkg("@shopify/cli", "4.8.4", &[], false);
+        let evil_name = pkg("evil;name", "1.0.0", &[], false);
+        let evil_version = pkg("yoinks", "1.0.0 && echo INJECTED", &[], false);
+        let linked = pkg("mytool", "1.0.0", &[], true);
+        let missing = [&good, &evil_name, &evil_version, &linked];
+        let target = version("v26.11.1");
+
+        // Without pinning, only the name matters: yoinks is fine.
+        assert_eq!(
+            install_command(&Flavor::NvmSh, &target, &missing, false).unwrap(),
+            "nvm exec 26.11.1 npm i -g @shopify/cli yoinks"
+        );
+        assert_eq!(names(&not_installable(&missing, false)), ["evil;name"]);
+
+        // With --exact, the tampered version is left out too.
+        assert_eq!(
+            install_command(&Flavor::NvmSh, &target, &missing, true).unwrap(),
+            "nvm exec 26.11.1 npm i -g @shopify/cli@4.8.4"
+        );
+        assert_eq!(
+            names(&not_installable(&missing, true)),
+            ["evil;name", "yoinks"]
+        );
+
+        assert_eq!(
+            install_command(&Flavor::NvmSh, &target, &[&evil_name], false),
             None
         );
     }

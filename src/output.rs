@@ -6,7 +6,7 @@ use std::fmt::Write;
 
 use anstyle::{AnsiColor, Style};
 
-use crate::compare::{Diff, Found, npm_install_command};
+use crate::compare::{Diff, Found, is_installable, npm_install_command};
 use crate::nvm::{Entry, Flavor, GlobalPackage};
 
 const HEADER: Style = Style::new().bold();
@@ -245,7 +245,7 @@ pub fn registry_summary(entries: &[Entry], flavor: &Flavor, incomplete: bool) ->
             let specs: Vec<String> = entry
                 .packages
                 .iter()
-                .filter(|p| p.registry.update.is_some() && !p.linked)
+                .filter(|p| p.registry.update.is_some() && is_installable(p, false))
                 .map(|p| format!("{}@latest", p.name))
                 .collect();
             if specs.is_empty() {
@@ -307,7 +307,13 @@ fn package_lines(out: &mut String, packages: &[&GlobalPackage]) {
 }
 
 /// The differences between two versions, plus how to install what `to` lacks.
-pub fn diff(from: &Entry, to: &Entry, d: &Diff, install_command: Option<&str>) -> String {
+pub fn diff(
+    from: &Entry,
+    to: &Entry,
+    d: &Diff,
+    install_command: Option<&str>,
+    skipped: &[&GlobalPackage],
+) -> String {
     let mut out = format!(
         "{} {} {}\n",
         version_heading(from),
@@ -388,6 +394,20 @@ pub fn diff(from: &Entry, to: &Entry, d: &Diff, install_command: Option<&str>) -
                 &format!(
                     "Linked packages are not included, re-run `npm link` for: {}",
                     linked.join(", ")
+                )
+            )
+        );
+    }
+    if !skipped.is_empty() {
+        let names: Vec<&str> = skipped.iter().map(|p| p.name.as_str()).collect();
+        let _ = writeln!(
+            out,
+            "{}",
+            styled(
+                WARN,
+                &format!(
+                    "Not included, the package name or version looks invalid: {}",
+                    names.join(", ")
                 )
             )
         );
@@ -605,6 +625,7 @@ yoinks        -        0.3.1     -
             to,
             &d,
             Some("nvm exec 26.1.0 npm i -g @shopify/cli yoinks"),
+            &[],
         );
         assert_eq!(
             plain(&out),
@@ -627,10 +648,28 @@ Linked packages are not included, re-run `npm link` for: mytool
     }
 
     #[test]
+    fn diff_reports_packages_left_out_of_the_command() {
+        let to = &sample()[2];
+        let from = entry(
+            "v20.0.0",
+            None,
+            vec![pkg("evil;name", Some("1.0.0"), &[], false)],
+        );
+        let d = crate::compare::diff(&from.packages, &to.packages);
+        let skipped = crate::compare::not_installable(&d.only_from, false);
+        let out = plain(&diff(&from, to, &d, None, &skipped));
+        assert!(!out.contains("To install"), "{out}");
+        assert!(
+            out.ends_with("Not included, the package name or version looks invalid: evil;name\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn renders_identical_diff() {
         let entries = sample();
         let d = crate::compare::diff(&entries[1].packages, &entries[1].packages);
-        let out = diff(&entries[1], &entries[1], &d, None);
+        let out = diff(&entries[1], &entries[1], &d, None, &[]);
         assert!(plain(&out).ends_with("No differences (3 identical packages).\n"));
     }
 

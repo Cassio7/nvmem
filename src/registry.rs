@@ -11,6 +11,8 @@ use std::{fs, thread};
 
 use serde::{Deserialize, Serialize};
 
+use crate::sanitize::{is_safe_package_name, is_safe_version};
+
 /// How long a registry answer is reused before asking again.
 pub const CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -87,9 +89,16 @@ pub fn lookup(
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
 
+    // Names and versions end up in request URLs; skip anything that isn't a
+    // plain package name / semver version (they get no info).
+    let packages: Vec<&(String, String)> = packages
+        .iter()
+        .filter(|(name, version)| is_safe_package_name(name) && is_safe_version(version))
+        .collect();
+
     let mut keys: Vec<String> = Vec::new();
     let mut seen = HashSet::new();
-    for (name, version) in packages {
+    for (name, version) in &packages {
         for key in [manifest_key(name, "latest"), manifest_key(name, version)] {
             if seen.insert(key.clone()) {
                 keys.push(key);
@@ -375,6 +384,26 @@ mod tests {
         let result = lookup(&packages, None, CACHE_TTL, false, |_: &str| Fetched::Failed);
         assert!(result.incomplete);
         assert_eq!(info(&result, "yoinks", "0.3.1"), &Info::default());
+    }
+
+    #[test]
+    fn never_requests_unsafe_names_or_versions() {
+        let packages = pkgs(&[
+            ("yoinks", "0.3.1"),
+            ("../../-/whoami", "1.0.0"),
+            ("evil?x=1", "1.0.0"),
+            ("yoinks2", "1.0.0#frag"),
+        ]);
+        let requested = Mutex::new(Vec::new());
+        let result = lookup(&packages, None, CACHE_TTL, false, |key: &str| {
+            requested.lock().unwrap().push(key.to_string());
+            fake_registry(key)
+        });
+        let mut requested = requested.into_inner().unwrap();
+        requested.sort();
+        assert_eq!(requested, ["yoinks/0.3.1", "yoinks/latest"]);
+        assert_eq!(result.info.len(), 1);
+        assert!(!result.incomplete);
     }
 
     #[test]

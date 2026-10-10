@@ -2,6 +2,7 @@ mod compare;
 mod nvm;
 mod output;
 mod registry;
+mod sanitize;
 
 use anyhow::{Result, bail};
 use clap::{Args, ColorChoice, Parser, Subcommand};
@@ -173,7 +174,11 @@ fn diff(
         }
         return Ok(());
     }
-    anstream::print!("{}", output::diff(from, to, &d, command.as_deref()));
+    let skipped = compare::not_installable(&d.only_from, exact);
+    anstream::print!(
+        "{}",
+        output::diff(from, to, &d, command.as_deref(), &skipped)
+    );
     Ok(())
 }
 

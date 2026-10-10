@@ -139,6 +139,10 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
   `cli_definition_is_valid` test runs clap's `debug_assert` — keep it.
 - `src/compare.rs` — `diff`, `install_command` / `npm_install_command`,
   `find`/`suggestions` (pure, no I/O)
+- `src/sanitize.rs` — guards for external text (folder names, `package.json`,
+  registry): `is_safe_package_name` / `is_safe_version` gate everything that
+  goes into generated shell commands or registry URLs (invalid ones are left
+  out and reported, never quoted/escaped).
 - `src/registry.rs` — npm registry lookups + cache; `lookup` takes the fetch
   function as a parameter so tests use a fake registry (no network in tests)
 - `src/output.rs` — tree, table, diff and which renderers; return styled `String`s
