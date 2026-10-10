@@ -22,18 +22,25 @@ jobs:
           - { os: macos-latest, target: x86_64-apple-darwin, ext: "" }
           - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
     runs-on: ${{ matrix.os }}
+    # Expressions go through env, never straight into `run:` scripts.
+    env:
+      TAG: ${{ github.ref_name }}
+      TARGET: ${{ matrix.target }}
+      EXT: ${{ matrix.ext }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
-      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Build
+        shell: bash
+        run: cargo build --release --target "$TARGET"
       - name: Package
         shell: bash
         run: |
-          name=nvmem-${{ matrix.target }}${{ matrix.ext }}
-          cp target/${{ matrix.target }}/release/nvmem${{ matrix.ext }} "$name"
+          name="nvmem-$TARGET$EXT"
+          cp "target/$TARGET/release/nvmem$EXT" "$name"
           echo "ASSET=$name" >> "$GITHUB_ENV"
       - name: Upload to release
         shell: bash
@@ -43,17 +50,16 @@ jobs:
         # one fall back to GitHub's generated notes. `|| true`: the parallel
         # build jobs race to create the release, and only one can win.
         run: |
-          tag=${{ github.ref_name }}
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
-            git tag -l --format='%(contents)' "$tag" > "$RUNNER_TEMP/notes.md"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/notes.md"
             if [ -s "$RUNNER_TEMP/notes.md" ]; then
-              gh release create "$tag" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md" || true
+              gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" || true
             else
-              gh release create "$tag" --generate-notes || true
+              gh release create "$TAG" --generate-notes || true
             fi
           fi
-          gh release upload "$tag" "$ASSET" --clobber
+          gh release upload "$TAG" "$ASSET" --clobber
 
   # Install the just-published release with the real install scripts.
   verify-install:
