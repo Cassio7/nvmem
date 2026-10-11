@@ -1,10 +1,13 @@
 mod compare;
+mod npx;
 mod nvm;
 mod output;
 mod registry;
 mod sanitize;
 
-use anyhow::{Result, bail};
+use std::time::SystemTime;
+
+use anyhow::{Context, Result, bail};
 use clap::{Args, ColorChoice, Parser, Subcommand};
 
 /// List installed nvm Node versions and their global npm packages.
@@ -51,6 +54,18 @@ enum Command {
     Which {
         /// Package name (`typescript`, `@shopify/cli`) or command (`tsc`).
         name: String,
+    },
+
+    /// List packages cached by `npx` (not installed globally, shared by all
+    /// Node versions), with their size and when npx last used them.
+    Npx {
+        /// Check the npm registry for updates and deprecated packages.
+        #[arg(short, long)]
+        updates: bool,
+
+        /// Like --updates, but ignore cached registry answers.
+        #[arg(long)]
+        refresh: bool,
     },
 }
 
@@ -106,6 +121,7 @@ fn main() -> Result<()> {
         }) => diff(&install, &from, &to, exact, command_only, cli.all),
         // Bundled packages are always searchable: `nvmem which npx` should work.
         Some(Command::Which { name }) => which(&install, &name),
+        Some(Command::Npx { updates, refresh }) => npx(updates || refresh, refresh),
     }
 }
 
@@ -120,7 +136,11 @@ fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
         entries = selected.into_iter().map(|i| entries[i].clone()).collect();
     }
 
-    let incomplete = args.check_updates() && check_registry(&mut entries, args.refresh);
+    let incomplete = args.check_updates()
+        && check_registry(
+            entries.iter_mut().flat_map(|e| &mut e.packages),
+            args.refresh,
+        );
 
     let rendered = if args.table {
         output::table(&entries)
@@ -132,16 +152,55 @@ fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
         "{}",
         output::registry_summary(&entries, &install.flavor, incomplete)
     );
+    // The npx cache isn't tied to a version: only on the full tree view.
+    if args.node_version.is_none() && !args.table {
+        let cached = npx::cache_dir()
+            .map(|dir| npx::packages(&dir))
+            .unwrap_or_default();
+        anstream::print!("{}", output::npx_summary(&cached));
+    }
     Ok(())
+}
+
+fn npx(check_updates: bool, refresh: bool) -> Result<()> {
+    let dir = npx::cache_dir().context("can't locate the npm cache (set npm_config_cache)")?;
+    let mut cached = npx::packages(&dir);
+    let incomplete =
+        check_updates && check_registry(cached.iter_mut().map(|p| &mut p.package), refresh);
+    let sizes: Vec<u64> = cached.iter().map(|p| npx::dir_size(&p.dir)).collect();
+    anstream::print!(
+        "{}",
+        output::npx_list(&cached, &sizes, &tilde(&dir), SystemTime::now())
+    );
+    if incomplete {
+        anstream::print!(
+            "{}",
+            output::registry_summary(&[], &nvm::Flavor::NvmSh, true)
+        );
+    }
+    Ok(())
+}
+
+/// `path` with the home folder shown as `~`.
+fn tilde(path: &std::path::Path) -> String {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    match home.and_then(|h| path.strip_prefix(h).ok().map(|rest| rest.to_path_buf())) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Some(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        None => path.display().to_string(),
+    }
 }
 
 /// Fills in update / deprecation info from the npm registry. Returns true when
 /// the registry couldn't be reached for some packages.
-fn check_registry(entries: &mut [nvm::Entry], refresh: bool) -> bool {
+fn check_registry<'a>(
+    packages: impl Iterator<Item = &'a mut nvm::GlobalPackage>,
+    refresh: bool,
+) -> bool {
+    let mut targets: Vec<&mut nvm::GlobalPackage> = packages.collect();
     // Linked packages are local checkouts, not registry releases.
-    let packages: Vec<(String, String)> = entries
+    let packages: Vec<(String, String)> = targets
         .iter()
-        .flat_map(|e| &e.packages)
         .filter(|p| !p.linked)
         .filter_map(|p| Some((p.name.clone(), p.version.clone()?)))
         .collect();
@@ -155,7 +214,7 @@ fn check_registry(entries: &mut [nvm::Entry], refresh: bool) -> bool {
         refresh,
         registry::http_fetcher(),
     );
-    for pkg in entries.iter_mut().flat_map(|e| &mut e.packages) {
+    for pkg in targets.iter_mut() {
         if let Some(version) = &pkg.version
             && let Some(info) = lookup.info.get(&(pkg.name.clone(), version.clone()))
         {
@@ -197,6 +256,15 @@ fn diff(
 fn which(install: &nvm::Install, name: &str) -> Result<()> {
     let entries = install.load_entries(true)?;
     let found = compare::find(&entries, name);
+    let cached = npx::cache_dir()
+        .map(|dir| npx::packages(&dir))
+        .unwrap_or_default();
+    let in_npx = npx::matching(&cached, name);
+    let npx_note = output::npx_found(&in_npx, !found.is_empty(), SystemTime::now());
+    if found.is_empty() && !in_npx.is_empty() {
+        anstream::print!("{npx_note}");
+        return Ok(());
+    }
     if found.is_empty() {
         let name = sanitize::printable(name);
         let hints: Vec<_> = compare::suggestions(&entries, &name)
@@ -211,7 +279,7 @@ fn which(install: &nvm::Install, name: &str) -> Result<()> {
             hints.join(", ")
         );
     }
-    anstream::print!("{}", output::found(&found));
+    anstream::print!("{}{npx_note}", output::found(&found));
     Ok(())
 }
 
@@ -277,6 +345,14 @@ mod tests {
                 .command
                 .is_some_and(|c| matches!(c, Command::List(args) if args.check_updates()))
         );
+
+        assert!(matches!(
+            Cli::try_parse_from(["nvmem", "npx", "-u"]).unwrap().command,
+            Some(Command::Npx {
+                updates: true,
+                refresh: false
+            })
+        ));
 
         let cli = Cli::try_parse_from(["nvmem", "diff", "24", "26", "--all"]).unwrap();
         assert!(cli.all);

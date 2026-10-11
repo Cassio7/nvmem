@@ -356,7 +356,7 @@ fn matches_prefix(version: &NodeVersion, wanted: &[u64]) -> bool {
     [version.parts.0, version.parts.1, version.parts.2].starts_with(wanted)
 }
 
-fn read_package(name: String, path: &Path) -> GlobalPackage {
+pub(crate) fn read_package(name: String, path: &Path) -> GlobalPackage {
     let linked = fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
     let json = fs::read_to_string(path.join("package.json"))
         .ok()

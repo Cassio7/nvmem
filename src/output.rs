@@ -3,10 +3,12 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
+use std::time::SystemTime;
 
 use anstyle::{AnsiColor, Style};
 
 use crate::compare::{Diff, Found, is_installable, npm_install_command};
+use crate::npx::NpxPackage;
 use crate::nvm::{Entry, Flavor, GlobalPackage};
 use crate::sanitize::printable;
 
@@ -473,6 +475,188 @@ pub fn found(found: &[Found]) -> String {
     out
 }
 
+/// `bytes` as a short human-readable size: `512 B`, `5.6 MB`, `1.2 GB`.
+pub fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if value < 10.0 {
+        format!("{value:.1} {}", UNITS[unit])
+    } else {
+        format!("{value:.0} {}", UNITS[unit])
+    }
+}
+
+/// How long ago `secs` seconds is, roughly: `just now`, `5 minutes ago`, `2 days ago`.
+pub fn ago(secs: u64) -> String {
+    let (n, unit) = match secs {
+        0..60 => return "just now".to_string(),
+        60..3_600 => (secs / 60, "minute"),
+        3_600..86_400 => (secs / 3_600, "hour"),
+        86_400..2_592_000 => (secs / 86_400, "day"),
+        2_592_000..31_536_000 => (secs / 2_592_000, "month"),
+        _ => (secs / 31_536_000, "year"),
+    };
+    format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" })
+}
+
+fn used_ago(pkg: &NpxPackage, now: SystemTime) -> String {
+    pkg.used
+        .and_then(|t| now.duration_since(t).ok())
+        .map_or_else(String::new, |d| format!("used {}", ago(d.as_secs())))
+}
+
+/// One line at the end of the default list pointing at `nvmem npx`, or
+/// nothing when the npx cache is empty.
+pub fn npx_summary(packages: &[NpxPackage]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for p in packages {
+        if !names.contains(&p.package.name.as_str()) {
+            names.push(&p.package.name);
+        }
+    }
+    if names.is_empty() {
+        return String::new();
+    }
+    const SHOWN: usize = 3;
+    let mut list = names[..names.len().min(SHOWN)].join(", ");
+    if names.len() > SHOWN {
+        list += &format!(" (+{} more)", names.len() - SHOWN);
+    }
+    format!(
+        "\n{} {}  {}\n",
+        styled(DIM, "npx cache:"),
+        styled(Style::new(), &list),
+        styled(DIM, "· details: nvmem npx")
+    )
+}
+
+/// The full npx cache view: every cached package with its size and when npx
+/// last used it. `sizes[i]` is the size of `packages[i].dir`.
+pub fn npx_list(packages: &[NpxPackage], sizes: &[u64], location: &str, now: SystemTime) -> String {
+    let mut out = format!(
+        "{} {}\n",
+        styled(HEADER, "npx cache"),
+        styled(DIM, &format!("({location}, shared by all Node versions)"))
+    );
+    if packages.is_empty() {
+        let _ = writeln!(out, "  {} {}", styled(DIM, "└─"), styled(DIM, "(empty)"));
+        return out;
+    }
+
+    let rows: Vec<Vec<(Style, String)>> = packages
+        .iter()
+        .zip(sizes)
+        .map(|(p, &size)| {
+            let mut cells = package_cells(&p.package);
+            let bins = cells.pop().unwrap_or((DIM, String::new()));
+            cells.pop(); // (linked): never for npx
+            cells.push((DIM, human_size(size)));
+            cells.push((DIM, used_ago(p, now)));
+            cells.push(bins);
+            cells
+        })
+        .collect();
+    let widths: Vec<usize> = (0..rows[0].len())
+        .map(|col| {
+            rows.iter()
+                .map(|r| r[col].1.chars().count())
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    for (j, (p, row)) in packages.iter().zip(&rows).enumerate() {
+        let last = j + 1 == packages.len();
+        let branch = if last { "└─" } else { "├─" };
+        let _ = writeln!(out, "  {} {}", styled(DIM, branch), columns(row, &widths));
+        if let Some(message) = &p.package.registry.deprecated {
+            let stem = if last { " " } else { "│" };
+            let _ = writeln!(out, "  {}    {}", styled(DIM, stem), styled(DIM, message));
+        }
+    }
+
+    // Several packages can share one cache folder: count each folder once.
+    let mut seen = Vec::new();
+    let total: u64 = packages
+        .iter()
+        .zip(sizes)
+        .filter(|(p, _)| {
+            let new = !seen.contains(&&p.dir);
+            seen.push(&p.dir);
+            new
+        })
+        .map(|(_, &s)| s)
+        .sum();
+    let count = packages.len();
+    let _ = writeln!(
+        out,
+        "\n{} {}",
+        styled(
+            Style::new(),
+            &format!(
+                "{count} package{}, {}",
+                if count == 1 { "" } else { "s" },
+                human_size(total)
+            )
+        ),
+        styled(
+            DIM,
+            "· clean: npm cache clean --force (clears all of npm's cache)"
+        )
+    );
+
+    let updates: Vec<&str> = packages
+        .iter()
+        .filter(|p| p.package.registry.update.is_some())
+        .map(|p| p.package.name.as_str())
+        .collect();
+    if !updates.is_empty() {
+        let _ = writeln!(
+            out,
+            "{} {}",
+            styled(WARN, &format!("↑ newer on npm: {}", updates.join(", "))),
+            styled(DIM, "· npx <package>@latest fetches the newest")
+        );
+    }
+    out
+}
+
+/// What `nvmem which` adds about npx: where the npx cache has `matches`.
+/// `installed_globally` tells whether global copies were already listed.
+pub fn npx_found(matches: &[&NpxPackage], installed_globally: bool, now: SystemTime) -> String {
+    if matches.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    if installed_globally {
+        out.push('\n');
+    }
+    let heading = if installed_globally {
+        "also cached by npx:"
+    } else {
+        "not installed globally, but cached by npx:"
+    };
+    let _ = writeln!(out, "{}", styled(DIM, heading));
+    for p in matches {
+        let (style, version) = version_cell(p.package.version.as_deref());
+        let _ = writeln!(
+            out,
+            "  {}  {}  {}",
+            styled(HEADER, &p.package.name),
+            styled(style, version),
+            styled(DIM, &used_ago(p, now))
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -696,6 +880,91 @@ typescript  → tsc, tsserver
   not in: v18.0.0
 "
         );
+    }
+
+    fn npx_pkg(name: &str, version: &str, dir: &str, secs_ago: u64) -> NpxPackage {
+        NpxPackage {
+            package: pkg(name, Some(version), &[], false),
+            dir: PathBuf::from(dir),
+            used: Some(
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000 - secs_ago),
+            ),
+        }
+    }
+
+    fn now() -> SystemTime {
+        SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000)
+    }
+
+    #[test]
+    fn formats_sizes_and_ages() {
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(5_872_026), "5.6 MB");
+        assert_eq!(human_size(48 * 1024 * 1024), "48 MB");
+        assert_eq!(human_size(3 * 1024 * 1024 * 1024 / 2), "1.5 GB");
+        assert_eq!(ago(5), "just now");
+        assert_eq!(ago(60), "1 minute ago");
+        assert_eq!(ago(7_200), "2 hours ago");
+        assert_eq!(ago(86_400 * 3), "3 days ago");
+        assert_eq!(ago(86_400 * 95), "3 months ago");
+        assert_eq!(ago(86_400 * 800), "2 years ago");
+    }
+
+    #[test]
+    fn npx_summary_lists_a_few_names() {
+        assert_eq!(npx_summary(&[]), "");
+        let few = [npx_pkg("skills", "1.7.2", "a", 60)];
+        assert_eq!(
+            plain(&npx_summary(&few)),
+            "\nnpx cache: skills  · details: nvmem npx\n"
+        );
+        let many: Vec<_> = ["skills", "vite", "skills", "prettier", "cowsay", "tsx"]
+            .iter()
+            .map(|n| npx_pkg(n, "1.0.0", n, 60))
+            .collect();
+        assert_eq!(
+            plain(&npx_summary(&many)),
+            "\nnpx cache: skills, vite, prettier (+2 more)  · details: nvmem npx\n"
+        );
+    }
+
+    #[test]
+    fn renders_npx_list() {
+        let mut cached = vec![
+            npx_pkg("skills", "1.7.2", "/c/aaa", 7_200),
+            npx_pkg("@scope/tool", "2.1.0", "/c/bbb", 86_400 * 3),
+            npx_pkg("cowsay", "1.6.0", "/c/bbb", 86_400 * 3),
+        ];
+        cached[0].package.bins = vec!["add-skill".into(), "skills".into()];
+        cached[0].package.registry.update = Some("1.8.0".into());
+        let sizes = [5_872_026, 2048, 2048];
+        assert_eq!(
+            plain(&npx_list(&cached, &sizes, "~/.npm/_npx", now())),
+            "\
+npx cache (~/.npm/_npx, shared by all Node versions)
+  ├─ skills       1.7.2  ↑ 1.8.0  5.6 MB  used 2 hours ago  → add-skill, skills
+  ├─ @scope/tool  2.1.0           2.0 KB  used 3 days ago
+  └─ cowsay       1.6.0           2.0 KB  used 3 days ago
+
+3 packages, 5.6 MB · clean: npm cache clean --force (clears all of npm's cache)
+↑ newer on npm: skills · npx <package>@latest fetches the newest
+"
+        );
+        assert_eq!(
+            plain(&npx_list(&[], &[], "~/.npm/_npx", now())),
+            "npx cache (~/.npm/_npx, shared by all Node versions)\n  └─ (empty)\n"
+        );
+    }
+
+    #[test]
+    fn renders_npx_which_notes() {
+        let cached = npx_pkg("skills", "1.7.2", "a", 60);
+        assert_eq!(
+            plain(&npx_found(&[&cached], false, now())),
+            "not installed globally, but cached by npx:\n  skills  1.7.2  used 1 minute ago\n"
+        );
+        assert!(plain(&npx_found(&[&cached], true, now())).starts_with("\nalso cached by npx:"));
+        assert_eq!(npx_found(&[], false, now()), "");
     }
 
     #[test]
