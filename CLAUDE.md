@@ -25,6 +25,15 @@ Commands:
 - `nvmem which NAME`: versions that have a package, matched by package name or
   command name (`which tsc` → typescript). Always includes bundled packages.
   Exit code 1 with "did you mean" hints when nothing matches.
+- `nvmem npx [-u] [--refresh]`: packages in npm's npx cache (`src/npx.rs`;
+  `$npm_config_cache/_npx`, default `~/.npm/_npx` / `%LOCALAPPDATA%\npm-cache\_npx`),
+  most recently used first, with folder size and "used X ago" (folder mtime),
+  total + `npm cache clean --force` hint. Not per Node version, so it's a
+  separate view; the default tree ends with a one-line summary (first 3 names
+  + `(+N more)`), hidden with a VERSION filter, `--table`, or an empty cache.
+  `which` also reports npx-cached matches ("also cached by npx" / "not
+  installed globally, but cached by npx", exit 0). Sizes are only computed in
+  `nvmem npx` (the summary only reads `package.json` files, stays instant).
 - Global flags: `-a/--all` (include bundled npm/corepack), `--color auto|always|never`.
 
 ## v1 scope (agreed)
@@ -163,6 +172,9 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
   out and reported, never quoted/escaped). `printable` strips control
   characters and bidi overrides; `output::styled`/`padded` apply it to all
   printed text — never write external text to the output without them.
+- `src/npx.rs` — npx cache: `cache_dir`, `packages` (reads `_npx/<hash>/package.json`
+  `_npx.packages` specs, legacy `dependencies`; names that would escape the
+  folder are ignored), `matching`, `dir_size` (doesn't follow symlinks)
 - `src/registry.rs` — npm registry lookups + cache; `lookup` takes the fetch
   function as a parameter so tests use a fake registry (no network in tests)
 - `src/output.rs` — tree, table, diff and which renderers; return styled `String`s

@@ -42,16 +42,21 @@ nvmem diff 24 26 --exact --command-only
 eval "$(nvmem diff 24 26 --command-only)"   # run it
 
 nvmem which tsc        # which versions have it (package or command name)
+
+nvmem npx              # packages cached by npx: size, last used, how to clean
+nvmem npx -u           # same, plus updates and deprecations
 ```
 
 Markers: `↑ 4.9.3` newer on npm (with `-u`) · `deprecated` (with `-u`) · `(linked)` from `npm link` · `→ tsc` commands it adds · `(default)` / `(current)` the version nvm uses.
+
+`npx <pkg>` doesn't install globally: it caches the package in npm's cache (`~/.npm/_npx`), shared by all Node versions and kept until you clean it. `nvmem` ends with a one-line summary of that cache, `nvmem npx` shows the details, and `nvmem which` tells you when something is only cached by npx.
 
 Colors turn off when piped or when `NO_COLOR` is set; force with `--color always|never`.
 
 How it works
 ------------
 
-- reads nvm's folders directly (`$NVM_DIR` or `~/.nvm`; `%NVM_HOME%` or `%APPDATA%\nvm`)
+- reads nvm's folders directly (`$NVM_DIR` or `~/.nvm`; `%NVM_HOME%` or `%APPDATA%\nvm`), and npm's npx cache (`$npm_config_cache/_npx`, default `~/.npm/_npx`; Windows `%LOCALAPPDATA%\npm-cache\_npx`)
 - never touches the network unless you pass `-u`; then it asks the npm registry (or `$npm_config_registry`) about each package, in parallel, cached for 6 hours. That sends your global package names and versions to the registry
 - fnm, Volta, n, asdf and mise are not supported
 
