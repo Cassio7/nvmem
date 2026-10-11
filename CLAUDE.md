@@ -34,7 +34,16 @@ Commands:
   `which` also reports npx-cached matches ("also cached by npx" / "not
   installed globally, but cached by npx", exit 0). Sizes are only computed in
   `nvmem npx` (the summary only reads `package.json` files, stays instant).
-- Global flags: `-a/--all` (include bundled npm/corepack), `--color auto|always|never`.
+- Global flags: `-a/--all` (include bundled npm/corepack), `--color auto|always|never`,
+  `--json`. Global options work before or after the subcommand (don't bring
+  back clap's `args_conflicts_with_subcommands`: it broke `nvmem --all diff ...`).
+- `--json` (`src/json.rs`, list/diff/which; `npx --json` is refused for now):
+  one pretty JSON document on stdout via plain `println!`, never styled; errors
+  stay on stderr (stdout empty). Offline unless `-u`. Dedicated `Serialize`
+  structs are the public format, with `schema_version` (`json::SCHEMA_VERSION`,
+  now 1): bump it on breaking changes (renamed/removed fields, changed
+  meaning); new fields are fine. `--json` conflicts with `diff --command-only`;
+  `which` with no match prints the document (with `suggestions`) and exits 1.
 
 ## v1 scope (agreed)
 
@@ -52,7 +61,7 @@ Commands:
   `$XDG_CACHE_HOME/nvmem` or `~/.cache/nvmem`, `%LOCALAPPDATA%\nvmem\cache`); 404s are cached too; on network
   failure stale cache entries are used. Registry = `$npm_config_registry` or
   npmjs. Never block or fail the listing because of the registry.
-- Candidate next features: Homebrew tap, disk sizes, `--json`, shell completions.
+- Candidate next features: Homebrew tap, disk sizes, shell completions, `npx --json`.
 
 ## Build & run
 
@@ -172,6 +181,7 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
   out and reported, never quoted/escaped). `printable` strips control
   characters and bidi overrides; `output::styled`/`padded` apply it to all
   printed text — never write external text to the output without them.
+- `src/json.rs` — `--json` documents (`list`, `diff`, `which`) + `print`
 - `src/npx.rs` — npx cache: `cache_dir`, `packages` (reads `_npx/<hash>/package.json`
   `_npx.packages` specs, legacy `dependencies`; names that would escape the
   folder are ignored), `matching`, `dir_size` (doesn't follow symlinks)

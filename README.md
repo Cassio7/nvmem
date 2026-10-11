@@ -45,11 +45,16 @@ nvmem which tsc        # which versions have it (package or command name)
 
 nvmem npx              # packages cached by npx: size, last used, how to clean
 nvmem npx -u           # same, plus updates and deprecations
+
+nvmem --json           # one JSON document instead of text (list, diff, which)
+nvmem diff 24 26 --json | jq -r .install_command
 ```
 
 Markers: `↑ 4.9.3` newer on npm (with `-u`) · `deprecated` (with `-u`) · `(linked)` from `npm link` · `→ tsc` commands it adds · `(default)` / `(current)` the version nvm uses.
 
 `npx <pkg>` doesn't install globally: it caches the package in npm's cache (`~/.npm/_npx`), shared by all Node versions and kept until you clean it. `nvmem` ends with a one-line summary of that cache, `nvmem npx` shows the details, and `nvmem which` tells you when something is only cached by npx.
+
+`--json` prints a single JSON document on stdout (no colors, no extra text) with a `schema_version` field, so other tools can build on it — e.g. keep their own history of what you install. It stays offline unless you add `-u`; without it `update` / `deprecated` are `null` and `updates_checked` is `false`. Errors go to stderr; `which` with no match prints the document with `suggestions` and exits 1.
 
 Colors turn off when piped or when `NO_COLOR` is set; force with `--color always|never`.
 
