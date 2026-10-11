@@ -12,7 +12,7 @@ use clap::{Args, ColorChoice, Parser, Subcommand};
 
 /// List installed nvm Node versions and their global npm packages.
 #[derive(Parser)]
-#[command(version, args_conflicts_with_subcommands = true)]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -304,6 +304,19 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn global_options_work_before_subcommands() {
+        let cli = Cli::try_parse_from(["nvmem", "--color", "never", "which", "tsc"]).unwrap();
+        assert!(matches!(cli.command, Some(Command::Which { .. })));
+        let cli = Cli::try_parse_from(["nvmem", "--all", "diff", "24", "26"]).unwrap();
+        assert!(cli.all);
+        assert!(matches!(cli.command, Some(Command::Diff { .. })));
+        // The list shorthand still works.
+        let cli = Cli::try_parse_from(["nvmem", "--all", "24"]).unwrap();
+        assert!(cli.command.is_none());
+        assert_eq!(cli.list.node_version.as_deref(), Some("24"));
     }
 
     #[test]
