@@ -1,4 +1,5 @@
 mod compare;
+mod json;
 mod npx;
 mod nvm;
 mod output;
@@ -27,6 +28,11 @@ struct Cli {
     /// When to use colors.
     #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
     color: ColorChoice,
+
+    /// Print one JSON document on stdout instead of text (list, diff, which).
+    /// Still offline unless -u is given.
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -45,7 +51,7 @@ enum Command {
         #[arg(long)]
         exact: bool,
         /// Only print the install command (e.g. to pipe into a shell).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "json")]
         command_only: bool,
     },
 
@@ -110,24 +116,28 @@ fn main() -> Result<()> {
     }
 
     let install = nvm::Install::detect()?;
+    let json = cli.json;
     match cli.command {
-        None => list(&install, &cli.list, cli.all),
-        Some(Command::List(args)) => list(&install, &args, cli.all),
+        None => list(&install, &cli.list, cli.all, json),
+        Some(Command::List(args)) => list(&install, &args, cli.all, json),
         Some(Command::Diff {
             from,
             to,
             exact,
             command_only,
-        }) => diff(&install, &from, &to, exact, command_only, cli.all),
+        }) => diff(&install, &from, &to, exact, command_only, cli.all, json),
         // Bundled packages are always searchable: `nvmem which npx` should work.
-        Some(Command::Which { name }) => which(&install, &name),
+        Some(Command::Which { name }) => which(&install, &name, json),
+        Some(Command::Npx { .. }) if json => {
+            bail!("--json is supported for list, diff and which, not npx yet")
+        }
         Some(Command::Npx { updates, refresh }) => npx(updates || refresh, refresh),
     }
 }
 
-fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
+fn list(install: &nvm::Install, args: &ListArgs, all: bool, json: bool) -> Result<()> {
     let mut entries = install.load_entries(all)?;
-    if entries.is_empty() {
+    if entries.is_empty() && !json {
         anstream::println!("No Node versions installed in {}", install.root.display());
         return Ok(());
     }
@@ -142,6 +152,14 @@ fn list(install: &nvm::Install, args: &ListArgs, all: bool) -> Result<()> {
             args.refresh,
         );
 
+    if json {
+        return json::print(&json::list(
+            install,
+            &entries,
+            args.check_updates(),
+            incomplete,
+        ));
+    }
     let rendered = if args.table {
         output::table(&entries)
     } else {
@@ -231,6 +249,7 @@ fn diff(
     exact: bool,
     command_only: bool,
     all: bool,
+    json: bool,
 ) -> Result<()> {
     let entries = install.load_entries(all)?;
     // A spec can match several versions (e.g. `22`); use the newest.
@@ -246,6 +265,9 @@ fn diff(
         return Ok(());
     }
     let skipped = compare::not_installable(&d.only_from, exact);
+    if json {
+        return json::print(&json::diff(from, to, &d, command.as_deref(), &skipped));
+    }
     anstream::print!(
         "{}",
         output::diff(from, to, &d, command.as_deref(), &skipped)
@@ -253,13 +275,27 @@ fn diff(
     Ok(())
 }
 
-fn which(install: &nvm::Install, name: &str) -> Result<()> {
+fn which(install: &nvm::Install, name: &str, json: bool) -> Result<()> {
     let entries = install.load_entries(true)?;
     let found = compare::find(&entries, name);
     let cached = npx::cache_dir()
         .map(|dir| npx::packages(&dir))
         .unwrap_or_default();
     let in_npx = npx::matching(&cached, name);
+    if json {
+        let suggestions = if found.is_empty() && in_npx.is_empty() {
+            compare::suggestions(&entries, name)
+        } else {
+            Vec::new()
+        };
+        let doc = json::which(name, &found, &in_npx, suggestions);
+        json::print(&doc)?;
+        // Nothing found: the document (with suggestions) is still printed.
+        if doc.is_empty() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let npx_note = output::npx_found(&in_npx, !found.is_empty(), SystemTime::now());
     if found.is_empty() && !in_npx.is_empty() {
         anstream::print!("{npx_note}");
@@ -366,6 +402,27 @@ mod tests {
                 refresh: false
             })
         ));
+
+        // --json is global: before or after the subcommand.
+        assert!(Cli::try_parse_from(["nvmem", "--json"]).unwrap().json);
+        assert!(
+            Cli::try_parse_from(["nvmem", "24", "--json", "-u"])
+                .unwrap()
+                .json
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "diff", "24", "26", "--json"])
+                .unwrap()
+                .json
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "--json", "which", "tsc"])
+                .unwrap()
+                .json
+        );
+        assert!(
+            Cli::try_parse_from(["nvmem", "diff", "24", "26", "--json", "--command-only"]).is_err()
+        );
 
         let cli = Cli::try_parse_from(["nvmem", "diff", "24", "26", "--all"]).unwrap();
         assert!(cli.all);
