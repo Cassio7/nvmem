@@ -171,9 +171,24 @@ mod tests {
         dir
     }
 
+    /// Sets a directory's modification time.
     fn set_mtime(path: &Path, secs_ago: u64) {
         let time = SystemTime::now() - Duration::from_secs(secs_ago);
-        fs::File::open(path).unwrap().set_modified(time).unwrap();
+        // Windows only opens a directory with FILE_FLAG_BACKUP_SEMANTICS, and
+        // changing its times needs FILE_WRITE_ATTRIBUTES access.
+        #[cfg(windows)]
+        let dir = {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            fs::OpenOptions::new()
+                .access_mode(FILE_WRITE_ATTRIBUTES)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+        };
+        #[cfg(not(windows))]
+        let dir = fs::File::open(path);
+        dir.unwrap().set_modified(time).unwrap();
     }
 
     #[test]
