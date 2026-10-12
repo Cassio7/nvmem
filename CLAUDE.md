@@ -21,8 +21,9 @@ Commands:
   default**; with `-u` (or `--refresh` = `-u` ignoring the cache) it also shows
   `↑ x.y.z` when npm has a newer version and `deprecated` + message (`↑` / `!`
   in the table), ending with a summary + `npm i -g <pkg>@latest` commands per
-  version. `--offline` is a hidden no-op kept for v0.1.3 compatibility. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
-  `default`/`current`, `node`, or an nvm-sh alias like `lts/*`.
+  version. `--offline` is a hidden no-op kept for v0.1.3 compatibility.
+  `VERSION` filters: `24`, `22.9`, `v24.21.0`, `default`/`current`, `node`, or
+  an nvm-sh alias like `lts/*`.
 - `nvmtree diff FROM TO [--exact] [--command-only]`: packages only in FROM / only in
   TO / at different versions, plus the command to install FROM's missing packages
   into TO (`nvm exec <v> npm i -g ...`; two lines on nvm-windows). A spec matching
@@ -50,23 +51,27 @@ Commands:
   meaning); new fields are fine. `--json` conflicts with `diff --command-only`;
   `which` with no match prints the document (with `suggestions`) and exits 1.
 
-## v1 scope (agreed)
+## Design principles
 
 - Plain, non-interactive CLI: print and exit.
-- Read-only on disk (only writes the registry cache): list installed Node versions and, under each, its global packages
-  with their versions (tree-style output). Mark the nvm-sh `default` alias,
-  or the active version on nvm-windows (`current`).
+- Read-only: never installs, deletes or changes anything; it prints commands
+  (install, update, clean) for the user to run. The only file it writes is the
+  registry cache, and only with `-u`. `--json` prints to stdout, never to a file.
+- Offline by default; network only with `-u`/`--refresh`.
+- Mark the nvm-sh `default` alias, or the active version on nvm-windows (`current`).
 - Hide Node-bundled packages (`npm`, `corepack`) by default; `--all` shows them.
 - Colors via `anstream`/`anstyle`: auto-disabled when piped, respects `NO_COLOR`.
-- Registry checks (`src/registry.rs`, only with `-u`/`--refresh` — it sends
-  package names/versions to the registry, so it stays opt-in): per package, GET `<registry>/<name>/latest`
-  and `<registry>/<name>/<installed>` (~5 KB each, scoped names as `@scope%2Fname`),
-  in parallel (≤16 threads, 3 s timeout) via `ureq`. Cached 6 h in
-  `registry.json` under the OS cache dir (`~/Library/Caches/nvmtree`,
-  `$XDG_CACHE_HOME/nvmtree` or `~/.cache/nvmtree`, `%LOCALAPPDATA%\nvmtree\cache`); 404s are cached too; on network
-  failure stale cache entries are used. Registry = `$npm_config_registry` or
-  npmjs. Never block or fail the listing because of the registry.
-- Candidate next features: Homebrew tap, disk sizes, shell completions, `npx --json`.
+- Registry checks (`src/registry.rs`, only with `-u`/`--refresh`, because they
+  send package names/versions to the registry): per package, GET
+  `<registry>/<name>/latest` and `<registry>/<name>/<installed>` (~5 KB each,
+  scoped names as `@scope%2Fname`), in parallel (≤16 threads, 3 s timeout) via
+  `ureq`. Cached 6 h in `registry.json` under the OS cache dir
+  (`~/Library/Caches/nvmtree`, `$XDG_CACHE_HOME/nvmtree` or `~/.cache/nvmtree`,
+  `%LOCALAPPDATA%\nvmtree\cache`); 404s are cached too; on network failure stale
+  cache entries are used. Registry = `$npm_config_registry` or npmjs. Never
+  block or fail the listing because of the registry.
+- Candidate next features: Homebrew tap, shell completions, `npx --json`, disk
+  usage per Node version, CONTRIBUTING.md + PR/issue templates.
 
 ## Build & run
 
@@ -127,7 +132,11 @@ cross-platform check.
 - `.github/workflows/audit.yml` — `cargo audit` (RustSec advisories) weekly
   (Mondays), on dependency changes, and on demand.
 - Keep tests portable: no `*` or other Windows-invalid chars in fixture file
-  names; gate symlink tests with `#[cfg(unix)]`.
+  names; gate symlink tests with `#[cfg(unix)]`; on Windows a directory can't be
+  opened with `File::open` (needs `FILE_FLAG_BACKUP_SEMANTICS`, see the
+  `set_mtime` test helper in `src/npx.rs`).
+- `main` has a GitHub ruleset ("protect main"); direct pushes to `main` are the
+  normal workflow (no PRs required for the owner).
 
 ## Commit messages
 
@@ -170,7 +179,7 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
 
 - `Cargo.toml` / `Cargo.lock` — package manifest (Rust edition 2024) and committed lockfile
 - `README.md` — user-facing docs (keep short; details live in `--help`);
-  `LICENSE` (MIT); `.gitignore` (`/target`)
+  `LICENSE` (MIT); `.gitignore` (`/target`, `/.claude/worktrees/` for agent worktrees)
 - `.github/` — `workflows/{ci,release,audit}.yml`, `dependabot.yml` (see above)
 - `install.sh` (POSIX sh, macOS/Linux) / `install.ps1` (Windows) — one-line
   installers served from `main` via raw.githubusercontent.com; download the
@@ -178,8 +187,8 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
   Env: `NVMTREE_VERSION`, `NVMTREE_INSTALL_DIR`.
 - `src/main.rs` — CLI (clap derive, subcommands; bare `nvmtree` = `list`), dispatch.
   `cli_definition_is_valid` test runs clap's `debug_assert` — keep it.
-- `src/compare.rs` — `diff`, `install_command` / `npm_install_command`,
-  `find`/`suggestions` (pure, no I/O)
+- `src/compare.rs` — `diff`, `is_installable` / `not_installable`,
+  `install_command` / `npm_install_command`, `find` / `suggestions` (pure, no I/O)
 - `src/sanitize.rs` — guards for external text (folder names, `package.json`,
   registry): `is_safe_package_name` / `is_safe_version` gate everything that
   goes into generated shell commands or registry URLs (invalid ones are left
@@ -192,11 +201,26 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
   folder are ignored), `matching`, `dir_size` (doesn't follow symlinks)
 - `src/registry.rs` — npm registry lookups + cache; `lookup` takes the fetch
   function as a parameter so tests use a fake registry (no network in tests)
-- `src/output.rs` — tree, table, diff and which renderers; return styled `String`s
-  (tests strip ANSI with `anstream::adapter::strip_str`)
+- `src/output.rs` — renderers returning styled `String`s: `tree`, `table`,
+  `registry_summary`, `diff`, `found` (which), `npx_summary` / `npx_list` /
+  `npx_found`, plus `human_size` / `ago` (tests strip ANSI with
+  `anstream::adapter::strip_str`)
 - `src/nvm.rs` — `Install` (nvm-sh or nvm-windows layout, chosen by `cfg!(windows)`):
   installed versions, default/current marker, global packages, `load_entries`,
-  version-spec `select`. Unit tests use fake nvm dirs via `tempfile`.
+  version-spec `select`; `read_package` (package.json → version, bins) is shared
+  with `npx.rs`. Unit tests use fake nvm dirs via `tempfile`.
+
+## Working on this repo
+
+- Workflow: the owner tries changes locally (`cargo run -- ...`) before
+  committing. Commit, push and release only when asked; release notes are
+  markdown bullets in the annotated tag (see CI / releases).
+- `gh` isn't installed locally. Check CI with GitHub's public REST API via
+  `curl` (`/repos/Cassio7/nvmtree/actions/runs?head_sha=...`, `.../runs/<id>/jobs`,
+  `.../check-runs/<job id>/annotations`, `.../releases/tags/<tag>`). Job logs need
+  auth (HTTP 403), so diagnose failures from the failing step + code.
+- Windows can't be built or tested locally: CI's Windows job (and the
+  release's `verify-install` for `install.ps1`) is the only Windows check.
 
 ## How nvm-sh stores things (Linux/macOS)
 
