@@ -142,7 +142,7 @@ impl Install {
         };
         format!(
             "{name} not found (looked in {}).\n\
-             nvmem lists the Node versions installed with {name}: {url}\n\
+             nvmtree lists the Node versions installed with {name}: {url}\n\
              If {name} is installed somewhere else, set {env} to its folder.",
             dir.display()
         )

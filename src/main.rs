@@ -41,7 +41,7 @@ enum Command {
     List(ListArgs),
 
     /// Compare the global packages of two versions and print how to install
-    /// the missing ones, e.g. `nvmem diff 24 26`.
+    /// the missing ones, e.g. `nvmtree diff 24 26`.
     Diff {
         /// Version to copy packages from.
         from: String,
@@ -56,7 +56,7 @@ enum Command {
     },
 
     /// Show which versions have a package, by package or command name,
-    /// e.g. `nvmem which tsc`.
+    /// e.g. `nvmtree which tsc`.
     Which {
         /// Package name (`typescript`, `@shopify/cli`) or command (`tsc`).
         name: String,
@@ -95,7 +95,7 @@ struct ListArgs {
     #[arg(long)]
     refresh: bool,
 
-    /// No-op kept for compatibility: nvmem is offline unless --updates is given.
+    /// No-op kept for compatibility: nvmtree is offline unless --updates is given.
     #[arg(long, hide = true)]
     offline: bool,
 }
@@ -126,7 +126,7 @@ fn main() -> Result<()> {
             exact,
             command_only,
         }) => diff(&install, &from, &to, exact, command_only, cli.all, json),
-        // Bundled packages are always searchable: `nvmem which npx` should work.
+        // Bundled packages are always searchable: `nvmtree which npx` should work.
         Some(Command::Which { name }) => which(&install, &name, json),
         Some(Command::Npx { .. }) if json => {
             bail!("--json is supported for list, diff and which, not npx yet")
@@ -344,59 +344,66 @@ mod tests {
 
     #[test]
     fn global_options_work_before_subcommands() {
-        let cli = Cli::try_parse_from(["nvmem", "--color", "never", "which", "tsc"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "--color", "never", "which", "tsc"]).unwrap();
         assert!(matches!(cli.command, Some(Command::Which { .. })));
-        let cli = Cli::try_parse_from(["nvmem", "--all", "diff", "24", "26"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "--all", "diff", "24", "26"]).unwrap();
         assert!(cli.all);
         assert!(matches!(cli.command, Some(Command::Diff { .. })));
         // The list shorthand still works.
-        let cli = Cli::try_parse_from(["nvmem", "--all", "24"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "--all", "24"]).unwrap();
         assert!(cli.command.is_none());
         assert_eq!(cli.list.node_version.as_deref(), Some("24"));
     }
 
     #[test]
     fn parses_list_shorthand_and_subcommands() {
-        let cli = Cli::try_parse_from(["nvmem", "24", "--table"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "24", "--table"]).unwrap();
         assert!(cli.command.is_none());
         assert_eq!(cli.list.node_version.as_deref(), Some("24"));
         assert!(cli.list.table);
 
         // Offline unless asked; --refresh implies --updates; --offline still parses.
-        assert!(!Cli::try_parse_from(["nvmem"]).unwrap().list.check_updates());
         assert!(
-            Cli::try_parse_from(["nvmem", "-u"])
+            !Cli::try_parse_from(["nvmtree"])
                 .unwrap()
                 .list
                 .check_updates()
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "24", "--updates", "--table"])
+            Cli::try_parse_from(["nvmtree", "-u"])
                 .unwrap()
                 .list
                 .check_updates()
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "--refresh"])
+            Cli::try_parse_from(["nvmtree", "24", "--updates", "--table"])
                 .unwrap()
                 .list
                 .check_updates()
         );
         assert!(
-            !Cli::try_parse_from(["nvmem", "-u", "--offline"])
+            Cli::try_parse_from(["nvmtree", "--refresh"])
                 .unwrap()
                 .list
                 .check_updates()
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "list", "-u"])
+            !Cli::try_parse_from(["nvmtree", "-u", "--offline"])
+                .unwrap()
+                .list
+                .check_updates()
+        );
+        assert!(
+            Cli::try_parse_from(["nvmtree", "list", "-u"])
                 .unwrap()
                 .command
                 .is_some_and(|c| matches!(c, Command::List(args) if args.check_updates()))
         );
 
         assert!(matches!(
-            Cli::try_parse_from(["nvmem", "npx", "-u"]).unwrap().command,
+            Cli::try_parse_from(["nvmtree", "npx", "-u"])
+                .unwrap()
+                .command,
             Some(Command::Npx {
                 updates: true,
                 refresh: false
@@ -404,31 +411,32 @@ mod tests {
         ));
 
         // --json is global: before or after the subcommand.
-        assert!(Cli::try_parse_from(["nvmem", "--json"]).unwrap().json);
+        assert!(Cli::try_parse_from(["nvmtree", "--json"]).unwrap().json);
         assert!(
-            Cli::try_parse_from(["nvmem", "24", "--json", "-u"])
+            Cli::try_parse_from(["nvmtree", "24", "--json", "-u"])
                 .unwrap()
                 .json
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "diff", "24", "26", "--json"])
+            Cli::try_parse_from(["nvmtree", "diff", "24", "26", "--json"])
                 .unwrap()
                 .json
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "--json", "which", "tsc"])
+            Cli::try_parse_from(["nvmtree", "--json", "which", "tsc"])
                 .unwrap()
                 .json
         );
         assert!(
-            Cli::try_parse_from(["nvmem", "diff", "24", "26", "--json", "--command-only"]).is_err()
+            Cli::try_parse_from(["nvmtree", "diff", "24", "26", "--json", "--command-only"])
+                .is_err()
         );
 
-        let cli = Cli::try_parse_from(["nvmem", "diff", "24", "26", "--all"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "diff", "24", "26", "--all"]).unwrap();
         assert!(cli.all);
         assert!(matches!(cli.command, Some(Command::Diff { .. })));
 
-        let cli = Cli::try_parse_from(["nvmem", "which", "tsc"]).unwrap();
+        let cli = Cli::try_parse_from(["nvmtree", "which", "tsc"]).unwrap();
         assert!(matches!(cli.command, Some(Command::Which { name }) if name == "tsc"));
     }
 }

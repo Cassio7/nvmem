@@ -1,19 +1,19 @@
 #!/bin/sh
-# Installs (or updates) nvmem on macOS and Linux.
+# Installs (or updates) nvmtree on macOS and Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Cassio7/nvmem/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Cassio7/nvmtree/main/install.sh | sh
 #
 # Environment variables:
-#   NVMEM_VERSION      release tag to install, e.g. v0.1.2 (default: latest)
-#   NVMEM_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
+#   NVMTREE_VERSION      release tag to install, e.g. v0.1.2 (default: latest)
+#   NVMTREE_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
 
 set -eu
 
-REPO="Cassio7/nvmem"
+REPO="Cassio7/nvmtree"
 
 say() { printf '%s\n' "$*"; }
-fail() { printf 'nvmem install: %s\n' "$*" >&2; exit 1; }
-warn() { printf 'nvmem install: warning: %s\n' "$*" >&2; }
+fail() { printf 'nvmtree install: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'nvmtree install: warning: %s\n' "$*" >&2; }
 
 detect_target() {
     os=$(uname -s)
@@ -39,7 +39,7 @@ detect_target() {
         arch_part="aarch64"
     fi
 
-    echo "nvmem-$arch_part-$os_part"
+    echo "nvmtree-$arch_part-$os_part"
 }
 
 download() {
@@ -50,7 +50,7 @@ download() {
     elif command -v wget >/dev/null 2>&1; then
         wget -q -O "$out" "$url"
     else
-        fail "need curl or wget to download nvmem"
+        fail "need curl or wget to download nvmtree"
     fi
 }
 
@@ -113,13 +113,13 @@ verify_checksum() {
 
 main() {
     asset=$(detect_target)
-    version=${NVMEM_VERSION:-latest}
+    version=${NVMTREE_VERSION:-latest}
     if [ "$version" = "latest" ]; then
         url="https://github.com/$REPO/releases/latest/download/$asset"
     else
         url="https://github.com/$REPO/releases/download/$version/$asset"
     fi
-    install_dir=${NVMEM_INSTALL_DIR:-"$HOME/.local/bin"}
+    install_dir=${NVMTREE_INSTALL_DIR:-"$HOME/.local/bin"}
 
     say "Downloading $asset ($version)..."
     tmp_dir=$(mktemp -d)
@@ -134,15 +134,15 @@ main() {
     fi
 
     mkdir -p "$install_dir"
-    mv -f "$tmp" "$install_dir/nvmem"
+    mv -f "$tmp" "$install_dir/nvmtree"
     rm -rf "$tmp_dir"
     trap - EXIT
 
-    installed=$("$install_dir/nvmem" --version) || fail "installed binary failed to run: $install_dir/nvmem"
-    say "Installed $installed to $install_dir/nvmem"
+    installed=$("$install_dir/nvmtree" --version) || fail "installed binary failed to run: $install_dir/nvmtree"
+    say "Installed $installed to $install_dir/nvmtree"
 
     case ":$PATH:" in
-        *":$install_dir:"*) say "Run 'nvmem' to get started." ;;
+        *":$install_dir:"*) say "Run 'nvmtree' to get started." ;;
         *)
             say ""
             say "$install_dir is not on your PATH. Add this line to your shell profile"

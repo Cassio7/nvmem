@@ -1,4 +1,4 @@
-//! Guards for text that comes from outside nvmem (folder names, `package.json`
+//! Guards for text that comes from outside nvmtree (folder names, `package.json`
 //! files, the npm registry) before it is printed or used in shell commands
 //! or URLs.
 

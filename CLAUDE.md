@@ -1,4 +1,9 @@
-# nvmem
+# nvmtree
+
+Formerly `nvmem` (renamed in v0.5.0 for findability: "nvmem" is the Linux/Zephyr
+non-volatile memory subsystem). The repo is `Cassio7/nvmtree`; GitHub redirects
+the old `Cassio7/nvmem` URLs. The local checkout folder may still be named
+`nvmem`. Don't reintroduce the old name except in that history note.
 
 A cross-platform (Linux, macOS, Windows) Rust CLI that inspects an nvm installation
 ([nvm-sh](https://github.com/nvm-sh/nvm) on Linux/macOS,
@@ -10,7 +15,7 @@ it lists every installed Node.js version and the global packages
 
 Commands:
 
-- `nvmem [VERSION] [-t/--table] [-u/--updates] [--refresh]` (same as `nvmem list`):
+- `nvmtree [VERSION] [-t/--table] [-u/--updates] [--refresh]` (same as `nvmtree list`):
   versions + global packages as a tree (with each package's commands from `bin`,
   `(linked)` for `npm link`), or a package × version matrix. **Offline by
   default**; with `-u` (or `--refresh` = `-u` ignoring the cache) it also shows
@@ -18,14 +23,14 @@ Commands:
   in the table), ending with a summary + `npm i -g <pkg>@latest` commands per
   version. `--offline` is a hidden no-op kept for v0.1.3 compatibility. `VERSION` filters: `24`, `22.9`, `v24.21.0`,
   `default`/`current`, `node`, or an nvm-sh alias like `lts/*`.
-- `nvmem diff FROM TO [--exact] [--command-only]`: packages only in FROM / only in
+- `nvmtree diff FROM TO [--exact] [--command-only]`: packages only in FROM / only in
   TO / at different versions, plus the command to install FROM's missing packages
   into TO (`nvm exec <v> npm i -g ...`; two lines on nvm-windows). A spec matching
   several versions uses the newest. Linked packages are left out of the command.
-- `nvmem which NAME`: versions that have a package, matched by package name or
+- `nvmtree which NAME`: versions that have a package, matched by package name or
   command name (`which tsc` → typescript). Always includes bundled packages.
   Exit code 1 with "did you mean" hints when nothing matches.
-- `nvmem npx [-u] [--refresh]`: packages in npm's npx cache (`src/npx.rs`;
+- `nvmtree npx [-u] [--refresh]`: packages in npm's npx cache (`src/npx.rs`;
   `$npm_config_cache/_npx`, default `~/.npm/_npx` / `%LOCALAPPDATA%\npm-cache\_npx`),
   most recently used first, with folder size and "used X ago" (folder mtime),
   total + `npm cache clean --force` hint. Not per Node version, so it's a
@@ -33,10 +38,10 @@ Commands:
   + `(+N more)`), hidden with a VERSION filter, `--table`, or an empty cache.
   `which` also reports npx-cached matches ("also cached by npx" / "not
   installed globally, but cached by npx", exit 0). Sizes are only computed in
-  `nvmem npx` (the summary only reads `package.json` files, stays instant).
+  `nvmtree npx` (the summary only reads `package.json` files, stays instant).
 - Global flags: `-a/--all` (include bundled npm/corepack), `--color auto|always|never`,
   `--json`. Global options work before or after the subcommand (don't bring
-  back clap's `args_conflicts_with_subcommands`: it broke `nvmem --all diff ...`).
+  back clap's `args_conflicts_with_subcommands`: it broke `nvmtree --all diff ...`).
 - `--json` (`src/json.rs`, list/diff/which; `npx --json` is refused for now):
   one pretty JSON document on stdout via plain `println!`, never styled; errors
   stay on stderr (stdout empty). Offline unless `-u`. Dedicated `Serialize`
@@ -57,8 +62,8 @@ Commands:
   package names/versions to the registry, so it stays opt-in): per package, GET `<registry>/<name>/latest`
   and `<registry>/<name>/<installed>` (~5 KB each, scoped names as `@scope%2Fname`),
   in parallel (≤16 threads, 3 s timeout) via `ureq`. Cached 6 h in
-  `registry.json` under the OS cache dir (`~/Library/Caches/nvmem`,
-  `$XDG_CACHE_HOME/nvmem` or `~/.cache/nvmem`, `%LOCALAPPDATA%\nvmem\cache`); 404s are cached too; on network
+  `registry.json` under the OS cache dir (`~/Library/Caches/nvmtree`,
+  `$XDG_CACHE_HOME/nvmtree` or `~/.cache/nvmtree`, `%LOCALAPPDATA%\nvmtree\cache`); 404s are cached too; on network
   failure stale cache entries are used. Registry = `$npm_config_registry` or
   npmjs. Never block or fail the listing because of the registry.
 - Candidate next features: Homebrew tap, disk sizes, shell completions, `npx --json`.
@@ -66,11 +71,11 @@ Commands:
 ## Build & run
 
 ```bash
-cargo build                 # debug build -> target/debug/nvmem
-cargo build --release       # optimized build -> target/release/nvmem
+cargo build                 # debug build -> target/debug/nvmtree
+cargo build --release       # optimized build -> target/release/nvmtree
 cargo run                   # build + run
 cargo run -- <args>         # pass arguments to the CLI
-cargo install --path .      # install `nvmem` into ~/.cargo/bin
+cargo install --path .      # install `nvmtree` into ~/.cargo/bin
 ```
 
 ## Quality checks
@@ -95,12 +100,12 @@ cross-platform check.
   (Linux x64/arm64, macOS arm64/x64, Windows x64) and attaches them to a GitHub
   release, then `verify-install` installs that release with the real install
   scripts on Linux x64/arm64, macOS and Windows (pwsh + PowerShell 5.1).
-- Release asset names have NO version (`nvmem-<target>[.exe]`) so
+- Release asset names have NO version (`nvmtree-<target>[.exe]`) so
   `releases/latest/download/<asset>` links always work. `install.sh` /
   `install.ps1` depend on these names — keep them in sync.
 - Each release asset gets a `<asset>.sha256` file (`<hex>  <asset>`, sha256sum
   format) and a build provenance attestation (`actions/attest-build-provenance`;
-  check with `gh attestation verify <file> --repo Cassio7/nvmem`).
+  check with `gh attestation verify <file> --repo Cassio7/nvmtree`).
 - `install.sh` / `install.ps1` verify the binary against `<asset>.sha256`:
   a mismatch is an error (nothing installed); a missing checksum (404, releases
   up to v0.1.3) or no hashing tool is only a warning.
@@ -169,9 +174,9 @@ registry); `tempfile` for tests. `Cargo.lock` is committed (binary crate).
 - `.github/` — `workflows/{ci,release,audit}.yml`, `dependabot.yml` (see above)
 - `install.sh` (POSIX sh, macOS/Linux) / `install.ps1` (Windows) — one-line
   installers served from `main` via raw.githubusercontent.com; download the
-  release asset to `~/.local/bin` / `%LOCALAPPDATA%\Programs\nvmem`.
-  Env: `NVMEM_VERSION`, `NVMEM_INSTALL_DIR`.
-- `src/main.rs` — CLI (clap derive, subcommands; bare `nvmem` = `list`), dispatch.
+  release asset to `~/.local/bin` / `%LOCALAPPDATA%\Programs\nvmtree`.
+  Env: `NVMTREE_VERSION`, `NVMTREE_INSTALL_DIR`.
+- `src/main.rs` — CLI (clap derive, subcommands; bare `nvmtree` = `list`), dispatch.
   `cli_definition_is_valid` test runs clap's `debug_assert` — keep it.
 - `src/compare.rs` — `diff`, `install_command` / `npm_install_command`,
   `find`/`suggestions` (pure, no I/O)

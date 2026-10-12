@@ -513,7 +513,7 @@ fn used_ago(pkg: &NpxPackage, now: SystemTime) -> String {
         .map_or_else(String::new, |d| format!("used {}", ago(d.as_secs())))
 }
 
-/// One line at the end of the default list pointing at `nvmem npx`, or
+/// One line at the end of the default list pointing at `nvmtree npx`, or
 /// nothing when the npx cache is empty.
 pub fn npx_summary(packages: &[NpxPackage]) -> String {
     let mut names: Vec<&str> = Vec::new();
@@ -534,7 +534,7 @@ pub fn npx_summary(packages: &[NpxPackage]) -> String {
         "\n{} {}  {}\n",
         styled(DIM, "npx cache:"),
         styled(Style::new(), &list),
-        styled(DIM, "· details: nvmem npx")
+        styled(DIM, "· details: nvmtree npx")
     )
 }
 
@@ -628,7 +628,7 @@ pub fn npx_list(packages: &[NpxPackage], sizes: &[u64], location: &str, now: Sys
     out
 }
 
-/// What `nvmem which` adds about npx: where the npx cache has `matches`.
+/// What `nvmtree which` adds about npx: where the npx cache has `matches`.
 /// `installed_globally` tells whether global copies were already listed.
 pub fn npx_found(matches: &[&NpxPackage], installed_globally: bool, now: SystemTime) -> String {
     if matches.is_empty() {
@@ -916,7 +916,7 @@ typescript  → tsc, tsserver
         let few = [npx_pkg("skills", "1.7.2", "a", 60)];
         assert_eq!(
             plain(&npx_summary(&few)),
-            "\nnpx cache: skills  · details: nvmem npx\n"
+            "\nnpx cache: skills  · details: nvmtree npx\n"
         );
         let many: Vec<_> = ["skills", "vite", "skills", "prettier", "cowsay", "tsx"]
             .iter()
@@ -924,7 +924,7 @@ typescript  → tsc, tsserver
             .collect();
         assert_eq!(
             plain(&npx_summary(&many)),
-            "\nnpx cache: skills, vite, prettier (+2 more)  · details: nvmem npx\n"
+            "\nnpx cache: skills, vite, prettier (+2 more)  · details: nvmtree npx\n"
         );
     }
 

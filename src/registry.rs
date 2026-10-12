@@ -191,9 +191,9 @@ fn save_cache(path: &Path, cache: &Cache) {
         .and_then(|_| fs::rename(&tmp, path));
 }
 
-/// `~/Library/Caches/nvmem/registry.json` (macOS),
-/// `%LOCALAPPDATA%\nvmem\cache\registry.json` (Windows),
-/// `$XDG_CACHE_HOME/nvmem/registry.json` or `~/.cache/nvmem/registry.json` (Linux).
+/// `~/Library/Caches/nvmtree/registry.json` (macOS),
+/// `%LOCALAPPDATA%\nvmtree\cache\registry.json` (Windows),
+/// `$XDG_CACHE_HOME/nvmtree/registry.json` or `~/.cache/nvmtree/registry.json` (Linux).
 pub fn default_cache_path() -> Option<PathBuf> {
     let env = |key| {
         std::env::var_os(key)
@@ -201,13 +201,13 @@ pub fn default_cache_path() -> Option<PathBuf> {
             .map(PathBuf::from)
     };
     let dir = if cfg!(windows) {
-        env("LOCALAPPDATA")?.join("nvmem").join("cache")
+        env("LOCALAPPDATA")?.join("nvmtree").join("cache")
     } else if cfg!(target_os = "macos") {
-        env("HOME")?.join("Library/Caches/nvmem")
+        env("HOME")?.join("Library/Caches/nvmtree")
     } else {
         env("XDG_CACHE_HOME")
             .or_else(|| env("HOME").map(|h| h.join(".cache")))?
-            .join("nvmem")
+            .join("nvmtree")
     };
     Some(dir.join("registry.json"))
 }
@@ -223,7 +223,7 @@ pub fn http_fetcher() -> impl Fn(&str) -> Fetched + Sync {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(REQUEST_TIMEOUT))
         .http_status_as_error(false)
-        .user_agent(concat!("nvmem/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("nvmtree/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
 

@@ -92,7 +92,7 @@ struct Version<'a> {
     packages: Vec<Package<'a>>,
 }
 
-/// `nvmem --json`: every (selected) Node version and its global packages.
+/// `nvmtree --json`: every (selected) Node version and its global packages.
 #[derive(Serialize)]
 pub struct List<'a> {
     schema_version: u32,
@@ -143,7 +143,7 @@ struct NotIncluded<'a> {
     invalid: Vec<&'a str>,
 }
 
-/// `nvmem diff FROM TO --json`.
+/// `nvmtree diff FROM TO --json`.
 #[derive(Serialize)]
 pub struct DiffDoc<'a> {
     schema_version: u32,
@@ -221,7 +221,7 @@ struct CachedPackage<'a> {
     last_used: Option<u64>,
 }
 
-/// `nvmem which NAME --json`.
+/// `nvmtree which NAME --json`.
 #[derive(Serialize)]
 pub struct WhichDoc<'a> {
     schema_version: u32,

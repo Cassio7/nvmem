@@ -41,8 +41,8 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name="nvmem-$TARGET$EXT"
-          cp "target/$TARGET/release/nvmem$EXT" "$name"
+          name="nvmtree-$TARGET$EXT"
+          cp "target/$TARGET/release/nvmtree$EXT" "$name"
           # sha256sum format ("<hex>  <file>"), checked by the install scripts.
           # Written by hand: sha256sum on Windows may print "*<file>".
           if command -v sha256sum >/dev/null 2>&1; then
@@ -85,27 +85,27 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      NVMEM_VERSION: ${{ github.ref_name }}
+      NVMTREE_VERSION: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: install.sh
         if: runner.os != 'Windows'
         run: |
           sh install.sh
-          "$HOME/.local/bin/nvmem" --version | grep -qx "nvmem ${GITHUB_REF_NAME#v}"
-          "$HOME/.local/bin/nvmem" --help >/dev/null
+          "$HOME/.local/bin/nvmtree" --version | grep -qx "nvmtree ${GITHUB_REF_NAME#v}"
+          "$HOME/.local/bin/nvmtree" --help >/dev/null
       - name: install.ps1
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           ./install.ps1
-          $v = nvmem --version
-          if ($v -ne "nvmem $($env:GITHUB_REF_NAME.TrimStart('v'))") { throw "unexpected version: $v" }
-          nvmem --help | Out-Null
+          $v = nvmtree --version
+          if ($v -ne "nvmtree $($env:GITHUB_REF_NAME.TrimStart('v'))") { throw "unexpected version: $v" }
+          nvmtree --help | Out-Null
       - name: install.ps1 (Windows PowerShell 5.1)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $env:NVMEM_INSTALL_DIR = "$env:RUNNER_TEMP\nvmem-ps5"
+          $env:NVMTREE_INSTALL_DIR = "$env:RUNNER_TEMP\nvmtree-ps5"
           ./install.ps1
-          & "$env:NVMEM_INSTALL_DIR\nvmem.exe" --version
+          & "$env:NVMTREE_INSTALL_DIR\nvmtree.exe" --version
